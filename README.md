@@ -34,8 +34,8 @@ Top 3 mô hình theo điểm tổng hợp dự báo gồm `balanced_accuracy`, `
 
 | horizon | model         | rank_score | balanced_accuracy | f1     | spearman_ic | strategy_sharpe |
 | ------- | ------------- | ---------- | ----------------- | ------ | ----------- | --------------- |
-| 5       | HMM Regime    | 0.8000     | 0.5357            | 0.6066 | 0.0479      | 1.5148          |
-| 5       | SVC           | 0.7750     | 0.5217            | 0.6531 | 0.0364      | 0.9470          |
+| 5       | SVC           | 0.8000     | 0.5217            | 0.6531 | 0.0361      | 0.9470          |
+| 5       | HMM Regime    | 0.7750     | 0.5357            | 0.6066 | 0.0479      | 1.5148          |
 | 5       | MACD 12-26-9  | 0.7000     | 0.5184            | 0.5725 | 0.0254      | 0.9119          |
 | 20      | MACD 12-26-9  | 0.8000     | 0.5329            | 0.5966 | 0.0338      | 0.9119          |
 | 20      | XGBoost       | 0.7250     | 0.5344            | 0.6650 | 0.0137      | 0.2267          |
@@ -65,6 +65,59 @@ Vị trí của MACD trong bảng dự báo:
 | 5       | MACD 12-26-9 | 0.7000     | 0.5184            | 0.5725 | 0.0254      | 0.9119          |
 | 20      | MACD 12-26-9 | 0.8000     | 0.5329            | 0.5966 | 0.0338      | 0.9119          |
 | 60      | MACD 12-26-9 | 0.7000     | 0.4658            | 0.5714 | 0.0197      | 0.9119          |
+
+## Dự báo tương lai từ phiên mới nhất
+
+Ngày dự báo mới nhất trong dữ liệu là `2026-07-01`, VNIndex đóng cửa `1,865.37`.
+Các mô hình được train lại trên toàn bộ phần lịch sử đã có nhãn cho từng horizon, sau đó dự báo từ trạng thái kỹ thuật mới nhất.
+
+### Nhận xét hướng đi VNIndex
+
+- Horizon 5 phiên đến khoảng `2026-07-08`: đồng thuận `Bullish`, 8/8 mô hình bullish, median return `0.40%`, target median `1,872.91`. Đa số mô hình ủng hộ xu hướng tăng.
+- Horizon 20 phiên đến khoảng `2026-07-29`: đồng thuận `Mixed/Neutral`, 3/8 mô hình bullish, median return `0.19%`, target median `1,868.86`. Tín hiệu phân hóa, nên ưu tiên quan sát xác nhận.
+- Horizon 60 phiên đến khoảng `2026-09-23`: đồng thuận `Mixed/Neutral`, 4/8 mô hình bullish, median return `2.52%`, target median `1,912.33`. Tín hiệu phân hóa, nên ưu tiên quan sát xác nhận.
+
+Bảng đồng thuận tổng hợp:
+
+| horizon | target_date | models | bullish_models | bullish_share | median_pred_return | weighted_pred_return | median_predicted_close | consensus_view |
+| ------- | ----------- | ------ | -------------- | ------------- | ------------------ | -------------------- | ---------------------- | -------------- |
+| 5       | 2026-07-08  | 8      | 8              | 100%          | 0.40%              | 0.64%                | 1,872.91               | Bullish        |
+| 20      | 2026-07-29  | 8      | 3              | 38%           | 0.19%              | 0.70%                | 1,868.86               | Mixed/Neutral  |
+| 60      | 2026-09-23  | 8      | 4              | 50%           | 2.52%              | 2.77%                | 1,912.33               | Mixed/Neutral  |
+
+Top mô hình theo chất lượng backtest dùng để tham khảo dự báo hiện tại:
+
+| horizon | model         | direction_label | pred_return | predicted_close | rank_score | test_balanced_accuracy | test_strategy_sharpe |
+| ------- | ------------- | --------------- | ----------- | --------------- | ---------- | ---------------------- | -------------------- |
+| 5       | SVC           | Bullish         | 0.0085      | 1881.2625       | 0.8000     | 0.5217                 | 0.9470               |
+| 5       | HMM Regime    | Bullish         | 0.0131      | 1889.8550       | 0.7750     | 0.5357                 | 1.5148               |
+| 5       | MACD 12-26-9  | Bullish         | 0.0055      | 1875.7155       | 0.7000     | 0.5184                 | 0.9119               |
+| 5       | Random Forest | Bullish         | 0.0025      | 1870.1030       | 0.6250     | 0.5173                 | 0.6789               |
+| 20      | MACD 12-26-9  | Bullish         | 0.0160      | 1895.2246       | 0.8000     | 0.5329                 | 0.9119               |
+| 20      | XGBoost       | Bearish/Flat    | -0.0100     | 1846.7625       | 0.7250     | 0.5344                 | 0.2267               |
+| 20      | Random Forest | Bearish/Flat    | 0.0048      | 1874.3476       | 0.6000     | 0.5049                 | 0.5679               |
+| 20      | HMM Regime    | Bullish         | 0.0359      | 1932.4033       | 0.5750     | 0.4909                 | 1.5148               |
+| 60      | MACD 12-26-9  | Bullish         | 0.0382      | 1936.6039       | 0.7000     | 0.4658                 | 0.9119               |
+| 60      | HMM Regime    | Bullish         | 0.0625      | 1981.9330       | 0.7000     | 0.4392                 | 0.9145               |
+| 60      | Random Forest | Bearish/Flat    | 0.0122      | 1888.0497       | 0.6500     | 0.5115                 | 0.4529               |
+| 60      | LightGBM      | Bearish/Flat    | -0.0210     | 1826.1398       | 0.5750     | 0.4730                 | 0.7960               |
+
+Diễn giải nhanh:
+
+- `direction_label` là tín hiệu hướng từ classifier hoặc ngưỡng return dự báo; `pred_return` là mức return kỳ vọng từ regressor/ước lượng regime. Với mô hình vừa classification vừa regression, hai lớp này có thể lệch nhau khi xác suất hướng yếu nhưng return kỳ vọng vẫn hơi dương.
+- Nếu `bullish_share` cao nhưng `median_pred_return` nhỏ, thị trường có thiên hướng tăng nhưng biên kỳ vọng chưa mạnh.
+- Nếu các mô hình tốt trong backtest đồng thuận với MACD/HMM, tín hiệu đáng chú ý hơn.
+- Nếu heatmap phân hóa mạnh giữa mô hình tuyến tính/kernel và mô hình cây/boosting, nên xem đó là trạng thái nhiễu hoặc chuyển regime.
+
+Ảnh dự báo tương lai:
+
+![Future Return Forecast](outputs/figures/07_future_return_forecast.png)
+
+![Future Price Targets](outputs/figures/08_future_price_targets.png)
+
+![Future Consensus](outputs/figures/09_future_consensus_dashboard.png)
+
+![Future Model Heatmap](outputs/figures/10_future_model_heatmap.png)
 
 ## Chỉ số học máy
 
@@ -141,6 +194,9 @@ Kết quả được ghi vào `outputs/`:
 - `financial_metrics_by_horizon.csv`: chỉ số tài chính theo mô hình và horizon.
 - `model_ranking.csv`: bảng xếp hạng tổng hợp.
 - `predictions.csv`: dự báo từng ngày trên tập test.
+- `future_forecasts.csv`: dự báo tương lai từ phiên mới nhất theo từng mô hình.
+- `future_consensus.csv`: bảng đồng thuận tương lai theo horizon.
+- `current_regime_forecast.csv`: regime hiện tại từ HMM theo từng horizon.
 - `feature_importance.csv`: top feature importance của các mô hình cây/boosting.
 - `regime_summary.csv`: trạng thái HMM và return kỳ vọng theo regime.
 - `figures/*.png`: toàn bộ biểu đồ.

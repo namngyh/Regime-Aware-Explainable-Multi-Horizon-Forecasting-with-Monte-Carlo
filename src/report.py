@@ -41,6 +41,8 @@ def write_readme(
     metrics: pd.DataFrame,
     financial: pd.DataFrame,
     ranking: pd.DataFrame,
+    future_forecasts: pd.DataFrame,
+    future_consensus: pd.DataFrame,
     artifacts: dict,
 ):
     best_by_horizon = (
@@ -56,6 +58,30 @@ def write_readme(
         .reset_index(drop=True)
     )
     macd = ranking[ranking["model"] == "MACD 12-26-9"].copy()
+    future_top = (
+        future_forecasts.sort_values(["horizon", "rank_score"], ascending=[True, False])
+        .groupby("horizon")
+        .head(4)
+        .reset_index(drop=True)
+    )
+    future_consensus_view = future_consensus.copy()
+    future_consensus_view["bullish_share"] = future_consensus_view["bullish_share"].map(lambda x: f"{x:.0%}")
+    for col in ["mean_pred_return", "median_pred_return", "weighted_pred_return"]:
+        future_consensus_view[col] = future_consensus_view[col].map(lambda x: f"{x:.2%}")
+    for col in ["median_predicted_close", "weighted_predicted_close"]:
+        future_consensus_view[col] = future_consensus_view[col].map(lambda x: f"{x:,.2f}")
+
+    latest_date = future_consensus["as_of_date"].iloc[0]
+    latest_close = future_consensus["latest_close"].iloc[0]
+    narrative_lines = []
+    for _, row in future_consensus.iterrows():
+        narrative_lines.append(
+            f"- Horizon {int(row['horizon'])} phiên đến khoảng `{row['target_date']}`: "
+            f"đồng thuận `{row['consensus_view']}`, {int(row['bullish_models'])}/{int(row['models'])} mô hình bullish, "
+            f"median return `{row['median_pred_return']:.2%}`, target median `{row['median_predicted_close']:,.2f}`. "
+            f"{row['interpretation']}"
+        )
+    narrative = "\n".join(narrative_lines)
 
     body = f"""# VNIndex ML Forecast Benchmark vs MACD
 
@@ -96,6 +122,40 @@ Top 3 mô hình theo Sharpe chiến lược:
 Vị trí của MACD trong bảng dự báo:
 
 {_markdown_table(macd, ["horizon", "model", "rank_score", "balanced_accuracy", "f1", "spearman_ic", "strategy_sharpe"])}
+
+## Dự báo tương lai từ phiên mới nhất
+
+Ngày dự báo mới nhất trong dữ liệu là `{latest_date}`, VNIndex đóng cửa `{latest_close:,.2f}`.
+Các mô hình được train lại trên toàn bộ phần lịch sử đã có nhãn cho từng horizon, sau đó dự báo từ trạng thái kỹ thuật mới nhất.
+
+### Nhận xét hướng đi VNIndex
+
+{narrative}
+
+Bảng đồng thuận tổng hợp:
+
+{_markdown_table(future_consensus_view, ["horizon", "target_date", "models", "bullish_models", "bullish_share", "median_pred_return", "weighted_pred_return", "median_predicted_close", "consensus_view"], max_rows=10)}
+
+Top mô hình theo chất lượng backtest dùng để tham khảo dự báo hiện tại:
+
+{_markdown_table(future_top, ["horizon", "model", "direction_label", "pred_return", "predicted_close", "rank_score", "test_balanced_accuracy", "test_strategy_sharpe"], max_rows=12)}
+
+Diễn giải nhanh:
+
+- `direction_label` là tín hiệu hướng từ classifier hoặc ngưỡng return dự báo; `pred_return` là mức return kỳ vọng từ regressor/ước lượng regime. Với mô hình vừa classification vừa regression, hai lớp này có thể lệch nhau khi xác suất hướng yếu nhưng return kỳ vọng vẫn hơi dương.
+- Nếu `bullish_share` cao nhưng `median_pred_return` nhỏ, thị trường có thiên hướng tăng nhưng biên kỳ vọng chưa mạnh.
+- Nếu các mô hình tốt trong backtest đồng thuận với MACD/HMM, tín hiệu đáng chú ý hơn.
+- Nếu heatmap phân hóa mạnh giữa mô hình tuyến tính/kernel và mô hình cây/boosting, nên xem đó là trạng thái nhiễu hoặc chuyển regime.
+
+Ảnh dự báo tương lai:
+
+![Future Return Forecast]({artifacts["future_return"]})
+
+![Future Price Targets]({artifacts["future_price_targets"]})
+
+![Future Consensus]({artifacts["future_consensus"]})
+
+![Future Model Heatmap]({artifacts["future_heatmap"]})
 
 ## Chỉ số học máy
 
@@ -172,6 +232,9 @@ Kết quả được ghi vào `outputs/`:
 - `financial_metrics_by_horizon.csv`: chỉ số tài chính theo mô hình và horizon.
 - `model_ranking.csv`: bảng xếp hạng tổng hợp.
 - `predictions.csv`: dự báo từng ngày trên tập test.
+- `future_forecasts.csv`: dự báo tương lai từ phiên mới nhất theo từng mô hình.
+- `future_consensus.csv`: bảng đồng thuận tương lai theo horizon.
+- `current_regime_forecast.csv`: regime hiện tại từ HMM theo từng horizon.
 - `feature_importance.csv`: top feature importance của các mô hình cây/boosting.
 - `regime_summary.csv`: trạng thái HMM và return kỳ vọng theo regime.
 - `figures/*.png`: toàn bộ biểu đồ.

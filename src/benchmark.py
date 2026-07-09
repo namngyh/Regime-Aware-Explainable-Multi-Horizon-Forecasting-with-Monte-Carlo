@@ -20,6 +20,10 @@ from src.plots import (
     plot_equity_curves,
     plot_feature_importance,
     plot_forecast_panel,
+    plot_future_consensus,
+    plot_future_model_heatmap,
+    plot_future_price_targets,
+    plot_future_return_forecast,
     plot_metric_heatmap,
     plot_price_macd,
     setup_plot_style,
@@ -83,6 +87,107 @@ def _make_prediction_rows(test, bundle, horizon):
     )
 
 
+def _build_future_forecasts(full_df, feature_cols, specs, ranking, horizons):
+    latest = full_df.dropna(subset=feature_cols).iloc[[-1]].copy()
+    latest_date = latest["date"].iloc[0]
+    latest_close = latest["close"].iloc[0]
+    rows = []
+    regime_rows = []
+
+    for horizon in horizons:
+        target_return = f"future_return_{horizon}d"
+        target_up = f"future_up_{horizon}d"
+        train_df = full_df.dropna(subset=feature_cols + [target_return]).copy()
+        x_train = train_df[feature_cols]
+        y_train_ret = train_df[target_return]
+        y_train_up = train_df[target_up].astype(int)
+        x_future = latest[feature_cols]
+
+        bundles = [fit_predict_macd(train_df, latest, horizon)]
+        for name, spec in specs.items():
+            bundles.append(fit_predict_supervised(name, spec, x_train, y_train_ret, y_train_up, x_future))
+        hmm_bundle = fit_predict_hmm(train_df, latest, feature_cols, horizon)
+        bundles.append(hmm_bundle)
+
+        for bundle in bundles:
+            pred_return = float(np.asarray(bundle.pred_return)[0])
+            pred_direction = int(np.asarray(bundle.pred_direction)[0])
+            score_up = float(np.asarray(bundle.score_up)[0]) if bundle.score_up is not None else np.nan
+            rank_match = ranking[(ranking["horizon"] == horizon) & (ranking["model"] == bundle.model)]
+            rank_data = rank_match.iloc[0].to_dict() if len(rank_match) else {}
+            current_regime = np.nan
+            if bundle.model == "HMM Regime":
+                current_regime = int(bundle.extra["predicted_states"][0])
+                regime_rows.append(
+                    {
+                        "horizon": horizon,
+                        "as_of_date": latest_date.date().isoformat(),
+                        "current_regime": current_regime,
+                        "regime_expected_return": pred_return,
+                        "regime_state_mean_map": bundle.extra["state_mean_return"],
+                    }
+                )
+            rows.append(
+                {
+                    "as_of_date": latest_date.date().isoformat(),
+                    "latest_close": latest_close,
+                    "horizon": horizon,
+                    "target_date": (latest_date + pd.offsets.BDay(horizon)).date().isoformat(),
+                    "model": bundle.model,
+                    "pred_return": pred_return,
+                    "pred_direction": pred_direction,
+                    "direction_label": "Bullish" if pred_direction == 1 else "Bearish/Flat",
+                    "score_up": score_up,
+                    "predicted_close": latest_close * (1 + pred_return),
+                    "rank_score": rank_data.get("rank_score", np.nan),
+                    "test_balanced_accuracy": rank_data.get("balanced_accuracy", np.nan),
+                    "test_f1": rank_data.get("f1", np.nan),
+                    "test_spearman_ic": rank_data.get("spearman_ic", np.nan),
+                    "test_strategy_sharpe": rank_data.get("strategy_sharpe", np.nan),
+                    "current_regime": current_regime,
+                }
+            )
+
+    future = pd.DataFrame(rows)
+    consensus_rows = []
+    for horizon, group in future.groupby("horizon"):
+        weights = group["rank_score"].fillna(0).clip(lower=0)
+        if weights.sum() <= 0:
+            weights = pd.Series(1.0, index=group.index)
+        weighted_return = np.average(group["pred_return"], weights=weights)
+        bullish_share = group["pred_direction"].mean()
+        median_return = group["pred_return"].median()
+        if bullish_share >= 0.625 and median_return > 0:
+            view = "Bullish"
+            note = "Đa số mô hình ủng hộ xu hướng tăng."
+        elif bullish_share <= 0.375 and median_return < 0:
+            view = "Bearish"
+            note = "Đa số mô hình nghiêng về rủi ro giảm."
+        else:
+            view = "Mixed/Neutral"
+            note = "Tín hiệu phân hóa, nên ưu tiên quan sát xác nhận."
+        consensus_rows.append(
+            {
+                "as_of_date": group["as_of_date"].iloc[0],
+                "latest_close": group["latest_close"].iloc[0],
+                "horizon": horizon,
+                "target_date": group["target_date"].iloc[0],
+                "models": len(group),
+                "bullish_models": int(group["pred_direction"].sum()),
+                "bearish_or_flat_models": int((1 - group["pred_direction"]).sum()),
+                "bullish_share": bullish_share,
+                "mean_pred_return": group["pred_return"].mean(),
+                "median_pred_return": median_return,
+                "weighted_pred_return": weighted_return,
+                "median_predicted_close": group["predicted_close"].median(),
+                "weighted_predicted_close": group["latest_close"].iloc[0] * (1 + weighted_return),
+                "consensus_view": view,
+                "interpretation": note,
+            }
+        )
+    return future, pd.DataFrame(consensus_rows), pd.DataFrame(regime_rows)
+
+
 def run_benchmark(data_path: Path, output_dir: Path, horizons=(5, 20, 60)):
     output_dir.mkdir(parents=True, exist_ok=True)
     figures_dir = output_dir / "figures"
@@ -90,9 +195,11 @@ def run_benchmark(data_path: Path, output_dir: Path, horizons=(5, 20, 60)):
     Path(".cache/matplotlib").mkdir(parents=True, exist_ok=True)
 
     raw = load_vnindex_csv(data_path)
-    df, feature_cols = make_features(raw, horizons)
-    df = df.dropna(subset=feature_cols + [f"future_return_{h}d" for h in horizons] + ["daily_return_next"]).copy()
-    train, valid, test = chronological_split(df)
+    full_df, feature_cols = make_features(raw, horizons)
+    historical_df = full_df.dropna(
+        subset=feature_cols + [f"future_return_{h}d" for h in horizons] + ["daily_return_next"]
+    ).copy()
+    train, valid, test = chronological_split(historical_df)
     split_summary = _split_summary(train, valid, test)
 
     train_valid = pd.concat([train, valid], ignore_index=True)
@@ -142,6 +249,9 @@ def run_benchmark(data_path: Path, output_dir: Path, horizons=(5, 20, 60)):
     feature_importance = pd.DataFrame(importance_rows)
     regime_summary = pd.DataFrame(regime_rows)
     ranking = _rank(metrics, financial)
+    future_forecasts, future_consensus, current_regime = _build_future_forecasts(
+        full_df, feature_cols, specs, ranking, horizons
+    )
 
     raw.to_csv(output_dir / "clean_vnindex_data.csv", index=False)
     split_summary.to_csv(output_dir / "split_summary.csv", index=False)
@@ -151,15 +261,22 @@ def run_benchmark(data_path: Path, output_dir: Path, horizons=(5, 20, 60)):
     ranking.to_csv(output_dir / "model_ranking.csv", index=False)
     feature_importance.to_csv(output_dir / "feature_importance.csv", index=False)
     regime_summary.to_csv(output_dir / "regime_summary.csv", index=False)
+    future_forecasts.to_csv(output_dir / "future_forecasts.csv", index=False)
+    future_consensus.to_csv(output_dir / "future_consensus.csv", index=False)
+    current_regime.to_csv(output_dir / "current_regime_forecast.csv", index=False)
 
     setup_plot_style()
-    plot_price_macd(df, figures_dir / "01_price_macd_rsi.png")
+    plot_price_macd(full_df.dropna(subset=feature_cols), figures_dir / "01_price_macd_rsi.png")
     plot_metric_heatmap(metrics, "balanced_accuracy", figures_dir / "02_balanced_accuracy_heatmap.png")
     plot_metric_heatmap(financial, "strategy_sharpe", figures_dir / "03_strategy_sharpe_heatmap.png")
     for horizon in horizons:
         plot_equity_curves(predictions, horizon, figures_dir / f"04_equity_curves_{horizon}d.png")
         plot_forecast_panel(predictions, horizon, figures_dir / f"05_forecast_panel_{horizon}d.png")
     plot_feature_importance(feature_importance, figures_dir / "06_feature_importance.png")
+    plot_future_return_forecast(future_forecasts, figures_dir / "07_future_return_forecast.png")
+    plot_future_price_targets(future_forecasts, future_consensus, figures_dir / "08_future_price_targets.png")
+    plot_future_consensus(future_forecasts, future_consensus, figures_dir / "09_future_consensus_dashboard.png")
+    plot_future_model_heatmap(future_forecasts, figures_dir / "10_future_model_heatmap.png")
 
     artifacts = {
         "price_macd": "outputs/figures/01_price_macd_rsi.png",
@@ -172,6 +289,10 @@ def run_benchmark(data_path: Path, output_dir: Path, horizons=(5, 20, 60)):
         "forecast_20": "outputs/figures/05_forecast_panel_20d.png",
         "forecast_60": "outputs/figures/05_forecast_panel_60d.png",
         "feature_importance": "outputs/figures/06_feature_importance.png",
+        "future_return": "outputs/figures/07_future_return_forecast.png",
+        "future_price_targets": "outputs/figures/08_future_price_targets.png",
+        "future_consensus": "outputs/figures/09_future_consensus_dashboard.png",
+        "future_heatmap": "outputs/figures/10_future_model_heatmap.png",
     }
     write_readme(
         Path("README.md"),
@@ -184,6 +305,8 @@ def run_benchmark(data_path: Path, output_dir: Path, horizons=(5, 20, 60)):
         metrics,
         financial,
         ranking,
+        future_forecasts,
+        future_consensus,
         artifacts,
     )
 

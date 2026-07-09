@@ -209,7 +209,12 @@ def fit_predict_hmm(train_df, test_df, feature_cols, horizon, random_state=42):
         pred_dir,
         pred_ret,
         score_up,
-        {"model": model, "state_mean_return": state_mean.to_dict(), "features": hmm_features},
+        {
+            "model": model,
+            "state_mean_return": state_mean.to_dict(),
+            "features": hmm_features,
+            "predicted_states": test_states,
+        },
     )
 
 

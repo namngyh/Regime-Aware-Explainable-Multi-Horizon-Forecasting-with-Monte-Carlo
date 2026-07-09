@@ -113,3 +113,89 @@ def plot_feature_importance(feature_importance: pd.DataFrame, output_path: Path)
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
+
+
+def plot_future_return_forecast(future: pd.DataFrame, output_path: Path):
+    data = future.copy()
+    data["pred_return_pct"] = data["pred_return"] * 100
+    data["direction"] = np.where(data["pred_direction"] == 1, "Bullish", "Bearish/Flat")
+    g = sns.catplot(
+        data=data,
+        x="model",
+        y="pred_return_pct",
+        hue="direction",
+        col="horizon",
+        kind="bar",
+        height=4,
+        aspect=1.25,
+        palette={"Bullish": "#38761d", "Bearish/Flat": "#cc0000"},
+        sharey=False,
+    )
+    g.set_axis_labels("", "Predicted forward return (%)")
+    g.set_titles("{col_name} phien")
+    for ax in g.axes.flat:
+        ax.axhline(0, color="#666666", linewidth=0.8)
+        ax.tick_params(axis="x", rotation=35)
+    g.fig.suptitle("Du bao return tu phien moi nhat theo tung mo hinh", y=1.05)
+    g.fig.tight_layout()
+    g.fig.savefig(output_path)
+    plt.close(g.fig)
+
+
+def plot_future_price_targets(future: pd.DataFrame, consensus: pd.DataFrame, output_path: Path):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    latest_close = future["latest_close"].iloc[0]
+    ax.axhline(latest_close, color="#222222", linestyle="--", linewidth=1.1, label=f"Latest close {latest_close:,.2f}")
+    for horizon, group in future.groupby("horizon"):
+        group = group.sort_values("predicted_close")
+        target_date = pd.to_datetime(group["target_date"].iloc[0])
+        x_offsets = np.linspace(-0.18, 0.18, len(group))
+        x_values = [target_date + pd.Timedelta(days=float(offset)) for offset in x_offsets]
+        colors = np.where(group["pred_direction"] == 1, "#38761d", "#cc0000")
+        ax.scatter(x_values, group["predicted_close"], s=55, c=colors, alpha=0.85, label=f"{horizon} phien models")
+        median_target = consensus.loc[consensus["horizon"] == horizon, "median_predicted_close"].iloc[0]
+        ax.scatter(target_date, median_target, s=180, marker="D", color="#0b5394", edgecolor="white", linewidth=0.8)
+        ax.text(target_date, median_target, f"  median {horizon}d: {median_target:,.0f}", va="center", fontsize=9)
+    ax.set_title("VNIndex projected close theo model va horizon")
+    ax.set_ylabel("Projected close")
+    ax.legend(loc="best", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
+
+
+def plot_future_consensus(future: pd.DataFrame, consensus: pd.DataFrame, output_path: Path):
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    sns.barplot(data=consensus, x="horizon", y="bullish_share", color="#6aa84f", ax=axes[0])
+    axes[0].axhline(0.5, color="#666666", linestyle="--", linewidth=0.9)
+    axes[0].set_ylim(0, 1)
+    axes[0].set_title("Ty le mo hinh bullish")
+    axes[0].set_ylabel("Bullish share")
+    axes[0].set_xlabel("Horizon")
+    for container in axes[0].containers:
+        axes[0].bar_label(container, fmt="%.0f%%", labels=[f"{v * 100:.0f}%" for v in consensus["bullish_share"]])
+
+    plot_data = consensus.copy()
+    plot_data["median_pred_return_pct"] = plot_data["median_pred_return"] * 100
+    colors = np.where(plot_data["median_pred_return"] >= 0, "#38761d", "#cc0000")
+    axes[1].bar(plot_data["horizon"].astype(str), plot_data["median_pred_return_pct"], color=colors)
+    axes[1].axhline(0, color="#666666", linewidth=0.9)
+    axes[1].set_title("Median predicted return")
+    axes[1].set_ylabel("%")
+    axes[1].set_xlabel("Horizon")
+    fig.suptitle("Dashboard dong thuan du bao tu cac mo hinh")
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
+
+
+def plot_future_model_heatmap(future: pd.DataFrame, output_path: Path):
+    pivot = future.pivot_table(index="model", columns="horizon", values="pred_return")
+    fig, ax = plt.subplots(figsize=(9, 6))
+    sns.heatmap(pivot * 100, annot=True, fmt=".2f", cmap="RdYlGn", center=0, ax=ax)
+    ax.set_title("Heatmap predicted forward return (%)")
+    ax.set_xlabel("Horizon")
+    ax.set_ylabel("")
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
