@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+.cache/
+.ipynb_checkpoints/
+.DS_Store
+catboost_info/
