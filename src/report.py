@@ -3,345 +3,160 @@ from pathlib import Path
 import pandas as pd
 
 
-def _pct(value):
-    if pd.isna(value):
-        return "NA"
-    return f"{value:.2%}"
-
-
-def _num(value):
-    if pd.isna(value):
-        return "NA"
-    return f"{value:.4f}"
-
-
-def _markdown_table(df: pd.DataFrame, cols: list[str], max_rows=12) -> str:
-    view = df[cols].head(max_rows).copy()
-    for col in view.columns:
-        if pd.api.types.is_float_dtype(view[col]):
-            view[col] = view[col].map(lambda x: f"{x:.4f}" if pd.notna(x) else "NA")
+def _table(frame, columns, digits=4):
+    view = frame[columns].copy()
+    for column in view.columns:
+        if pd.api.types.is_float_dtype(view[column]):
+            view[column] = view[column].map(
+                lambda value: f"{value:.{digits}f}" if pd.notna(value) else "NA"
+            )
     view = view.astype(str)
     widths = {
-        col: max(len(col), *(len(value) for value in view[col].tolist()))
-        for col in view.columns
+        column: max(
+            len(column), *(len(value) for value in view[column].tolist())
+        )
+        for column in view.columns
     }
-    header = "| " + " | ".join(col.ljust(widths[col]) for col in view.columns) + " |"
-    sep = "| " + " | ".join("-" * widths[col] for col in view.columns) + " |"
+    header = "| " + " | ".join(
+        column.ljust(widths[column]) for column in view.columns
+    ) + " |"
+    separator = "| " + " | ".join(
+        "-" * widths[column] for column in view.columns
+    ) + " |"
     rows = [
-        "| " + " | ".join(row[col].ljust(widths[col]) for col in view.columns) + " |"
+        "| "
+        + " | ".join(
+            row[column].ljust(widths[column]) for column in view.columns
+        )
+        + " |"
         for _, row in view.iterrows()
     ]
-    return "\n".join([header, sep, *rows])
+    return "\n".join([header, separator, *rows])
 
 
 def write_readme(
     output_path: Path,
     data_summary: dict,
     split_summary: pd.DataFrame,
-    metrics: pd.DataFrame,
-    financial: pd.DataFrame,
     ranking: pd.DataFrame,
-    future_forecasts: pd.DataFrame,
-    future_consensus: pd.DataFrame,
-    baseline_ranking: pd.DataFrame,
-    tuning_trials: pd.DataFrame,
+    stability: pd.DataFrame,
     best_parameters: pd.DataFrame,
-    tuning_comparison: pd.DataFrame,
-    artifacts: dict,
+    tuning_trials: pd.DataFrame,
+    future: pd.DataFrame,
 ):
-    best_by_horizon = (
-        ranking.sort_values(["horizon", "rank_score"], ascending=[True, False])
-        .groupby("horizon")
-        .head(3)
-        .reset_index(drop=True)
-    )
-    best_financial = (
-        financial.sort_values(["horizon", "strategy_sharpe"], ascending=[True, False])
-        .groupby("horizon")
-        .head(3)
-        .reset_index(drop=True)
-    )
-    macd = ranking[ranking["model"] == "MACD 12-26-9"].copy()
-    future_top = (
-        future_forecasts.sort_values(["horizon", "rank_score"], ascending=[True, False])
-        .groupby("horizon")
-        .head(4)
-        .reset_index(drop=True)
-    )
-    future_consensus_view = future_consensus.copy()
-    future_consensus_view["bullish_share"] = future_consensus_view["bullish_share"].map(lambda x: f"{x:.0%}")
-    for col in ["mean_pred_return", "median_pred_return", "weighted_pred_return"]:
-        future_consensus_view[col] = future_consensus_view[col].map(lambda x: f"{x:.2%}")
-    for col in ["median_predicted_close", "weighted_predicted_close"]:
-        future_consensus_view[col] = future_consensus_view[col].map(lambda x: f"{x:,.2f}")
-
-    tuned_models = tuning_comparison[
-        tuning_comparison["model"] != "MACD 12-26-9"
-    ].copy()
-    tuning_summary = (
-        tuned_models.groupby("horizon")
-        .agg(
-            models=("model", "size"),
-            models_improved=("improved_composite_score", "sum"),
-            mean_delta_composite_score=("delta_composite_score", "mean"),
-            mean_delta_balanced_accuracy=("delta_balanced_accuracy", "mean"),
-            mean_delta_spearman_ic=("delta_spearman_ic", "mean"),
-            mean_delta_strategy_sharpe=("delta_strategy_sharpe", "mean"),
-        )
-        .reset_index()
-    )
-    tuning_detail = tuned_models[
+    ranking_view = ranking[
         [
-            "horizon",
+            "rank",
             "model",
-            "candidate_id",
-            "delta_composite_score",
-            "delta_rank_score",
-            "delta_balanced_accuracy",
-            "delta_spearman_ic",
-            "delta_strategy_sharpe",
-            "improved_composite_score",
+            "forecast_score",
+            "mae",
+            "rmse",
+            "price_mae",
+            "price_rmse",
+            "price_mape",
+            "balanced_accuracy",
+            "spearman_ic",
         ]
-    ].sort_values(["horizon", "delta_composite_score"], ascending=[True, False])
+    ]
     parameter_view = best_parameters[
         [
-            "horizon",
             "model",
             "candidate_id",
             "cv_score",
             "cv_score_std",
             "selected_params",
         ]
-    ].sort_values(["horizon", "model"])
-    total_search_minutes = tuning_trials["fit_seconds"].sum() / 60
-    changed_parameters = int((best_parameters["candidate_id"] != 0).sum())
-    tuning_notes = []
-    for horizon, group in tuned_models.groupby("horizon"):
-        best = group.loc[group["delta_composite_score"].idxmax()]
-        worst = group.loc[group["delta_composite_score"].idxmin()]
-        improved = int(group["improved_composite_score"].sum())
-        tuning_notes.append(
-            f"- Horizon {int(horizon)} phiên: {improved}/{len(group)} mô hình tăng điểm tổng hợp trên test. "
-            f"Cải thiện lớn nhất là {best['model']} ({best['delta_composite_score']:+.4f}); "
-            f"giảm nhiều nhất là {worst['model']} ({worst['delta_composite_score']:+.4f})."
-        )
-    tuning_narrative = "\n".join(tuning_notes)
+    ]
+    future_view = future[
+        [
+            "as_of_date",
+            "target_date",
+            "model",
+            "pred_return",
+            "predicted_close",
+            "test_forecast_score",
+        ]
+    ].copy()
+    future_view["pred_return"] = future_view["pred_return"].map(
+        lambda value: f"{value:.2%}"
+    )
+    latest_close = future["latest_close"].iloc[0]
+    total_seconds = tuning_trials["fit_seconds"].sum()
 
-    latest_date = future_consensus["as_of_date"].iloc[0]
-    latest_close = future_consensus["latest_close"].iloc[0]
-    narrative_lines = []
-    for _, row in future_consensus.iterrows():
-        narrative_lines.append(
-            f"- Horizon {int(row['horizon'])} phiên đến khoảng `{row['target_date']}`: "
-            f"đồng thuận `{row['consensus_view']}`, {int(row['bullish_models'])}/{int(row['models'])} mô hình bullish, "
-            f"median return `{row['median_pred_return']:.2%}`, target median `{row['median_predicted_close']:,.2f}`. "
-            f"{row['interpretation']}"
-        )
-    narrative = "\n".join(narrative_lines)
+    body = f"""# VNIndex 20-session Forecast: Optimized MACD and HMM
 
-    body = f"""# VNIndex ML Forecast Benchmark vs MACD
+Project đã được rút gọn còn hai mô hình tốt nhất cho dự báo 20 phiên: **MACD 8-24-9** và **HMM Regime 4 trạng thái (`tied` covariance)**. SVC, SVR, Random Forest, XGBoost, LightGBM và CatBoost đã bị loại khỏi pipeline và dependency.
 
-Repo này so sánh khả năng dự báo của MACD 12-26-9 với các mô hình Machine Learning:
-SVC, SVR, Random Forest, XGBoost, LightGBM, CatBoost và HMM/Regime Model.
+## Kết quả lựa chọn trên tập test khóa
 
-Trọng tâm là dự báo theo 3 khung thời gian:
+{_table(ranking_view, list(ranking_view.columns))}
 
-- Ngắn hạn: 5 phiên
-- Trung hạn: 20 phiên
-- Dài hạn: 60 phiên
+`forecast_score` ưu tiên đúng theo yêu cầu:
 
-## Dữ liệu và phương pháp
+- 65% chất lượng dự báo lợi suất: MAE skill 35% và RMSE skill 30%.
+- 25% chất lượng dự báo giá đóng cửa: MAE skill 15% và RMSE skill 10%.
+- 10% khả năng dự báo đúng hướng: Balanced Accuracy.
 
-- File gốc: `data.csv`
-- Số dòng hợp lệ: `{data_summary["rows"]:,}`
-- Giai đoạn dữ liệu: `{data_summary["start"]}` đến `{data_summary["end"]}`
-- Biến dự báo: return tương lai `close[t+h] / close[t] - 1`
-- Nhãn hướng: tăng nếu return tương lai lớn hơn 0
-- Chia tập: theo thời gian, không shuffle, tránh leakage
-- Chiến lược tài chính: long/flat; nếu mô hình dự báo tăng thì nắm giữ cho phiên kế tiếp, nếu không thì đứng ngoài
-- MACD baseline: `MACD line > Signal line` được xem là tín hiệu bullish để dự báo hướng
+Các skill score so sánh với dự báo không đổi (`return = 0`, giá tương lai bằng giá hiện tại). Điểm cao hơn tốt hơn; MAE/RMSE thấp hơn tốt hơn. Tập test không tham gia chọn hyperparameter.
 
-## Tối ưu hyperparameter nhẹ
+## Hyperparameter tối ưu
 
-Mỗi mô hình ML/HMM có 4 cấu hình ứng viên cho từng horizon. Việc chọn tham số dùng
-TimeSeriesSplit với 3 fold và gap bằng chính horizon trên riêng phần train + validation.
-Tập test cuối không tham gia chọn tham số.
+{_table(parameter_view, list(parameter_view.columns))}
 
-Điểm CV tổng hợp gồm 45% Balanced Accuracy, 20% F1, 20% IC score và 15% Sharpe score.
-IC và Sharpe được co về thang 0-1 trước khi cộng. Search đã đánh giá
-{len(tuning_trials)} tổ hợp model-horizon-candidate, tổng thời gian fit cộng dồn khoảng
-{total_search_minutes:.1f} phút. Có {changed_parameters}/{len(best_parameters)} lựa chọn
-rời khỏi cấu hình baseline.
+- Search: {len(tuning_trials)} cấu hình, 3-fold expanding `TimeSeriesSplit`, `gap=20`.
+- Tổng thời gian fit cộng dồn: {total_seconds:.1f} giây.
+- Horizon cố định: 20 phiên giao dịch.
 
-### Tuning có cải thiện thật trên test không?
+## Chia dữ liệu theo thời gian
 
-{tuning_narrative}
+{_table(split_summary, ["split", "rows", "start", "end"])}
 
-Tổng hợp trung bình theo horizon:
+Dữ liệu gốc có {data_summary['rows']:,} quan sát từ {data_summary['start']} đến {data_summary['end']}. Mọi feature kỹ thuật đều chỉ dùng thông tin tại hoặc trước thời điểm dự báo.
 
-{_markdown_table(tuning_summary, ["horizon", "models", "models_improved", "mean_delta_composite_score", "mean_delta_balanced_accuracy", "mean_delta_spearman_ic", "mean_delta_strategy_sharpe"], max_rows=10)}
+## Độ ổn định theo năm trên tập test
 
-Chi tiết thay đổi theo mô hình; delta dương nghĩa là tuned tốt hơn baseline trên test:
+{_table(stability, ["model", "year", "rows", "forecast_score", "mae", "rmse", "price_mae", "balanced_accuracy"])}
 
-{_markdown_table(tuning_detail, ["horizon", "model", "candidate_id", "delta_composite_score", "delta_rank_score", "delta_balanced_accuracy", "delta_spearman_ic", "delta_strategy_sharpe", "improved_composite_score"], max_rows=30)}
+## Dự báo từ phiên mới nhất
 
-Tham số được chọn:
+VNIndex gần nhất trong dữ liệu đóng cửa ở **{latest_close:,.2f}**.
 
-{_markdown_table(parameter_view, ["horizon", "model", "candidate_id", "cv_score", "cv_score_std", "selected_params"], max_rows=30)}
+{_table(future_view, list(future_view.columns))}
 
-![Tuning Delta Heatmaps]({artifacts["tuning_deltas"]})
+Đây là dự báo nghiên cứu từ dữ liệu lịch sử, không phải khuyến nghị đầu tư. Vì dữ liệu kết thúc ở `{future['as_of_date'].iloc[0]}`, cần cập nhật `data.csv` và chạy lại pipeline nếu muốn tín hiệu mới hơn.
 
-![CV Search Scores]({artifacts["cv_search"]})
+## Biểu đồ
 
-![Baseline vs Tuned]({artifacts["baseline_vs_tuned"]})
+![VNIndex context](outputs/figures/01_vnindex_context.png)
 
-### Split thời gian
+![Model score](outputs/figures/02_model_score.png)
 
-{_markdown_table(split_summary, ["split", "rows", "start", "end"])}
+![Return MAE](outputs/figures/03_return_mae.png)
 
-## Kết luận nhanh
+![Locked test forecasts](outputs/figures/04_test_forecasts_20d.png)
 
-Top 3 mô hình theo điểm tổng hợp dự báo gồm `balanced_accuracy`, `f1`, `spearman_ic`, `r2` và `strategy_sharpe`:
+![Future return](outputs/figures/05_future_return_20d.png)
 
-{_markdown_table(best_by_horizon, ["horizon", "model", "rank_score", "balanced_accuracy", "f1", "spearman_ic", "strategy_sharpe"])}
+![Future price](outputs/figures/06_future_price_20d.png)
 
-Top 3 mô hình theo Sharpe chiến lược:
-
-{_markdown_table(best_financial, ["horizon", "model", "strategy_total_return", "strategy_sharpe", "strategy_max_drawdown", "strategy_exposure"])}
-
-Vị trí của MACD trong bảng dự báo:
-
-{_markdown_table(macd, ["horizon", "model", "rank_score", "balanced_accuracy", "f1", "spearman_ic", "strategy_sharpe"])}
-
-## Dự báo tương lai từ phiên mới nhất
-
-Ngày dự báo mới nhất trong dữ liệu là `{latest_date}`, VNIndex đóng cửa `{latest_close:,.2f}`.
-Các mô hình được train lại trên toàn bộ phần lịch sử đã có nhãn cho từng horizon, sau đó dự báo từ trạng thái kỹ thuật mới nhất.
-
-### Nhận xét hướng đi VNIndex
-
-{narrative}
-
-Bảng đồng thuận tổng hợp:
-
-{_markdown_table(future_consensus_view, ["horizon", "target_date", "models", "bullish_models", "bullish_share", "median_pred_return", "weighted_pred_return", "median_predicted_close", "consensus_view"], max_rows=10)}
-
-Top mô hình theo chất lượng backtest dùng để tham khảo dự báo hiện tại:
-
-{_markdown_table(future_top, ["horizon", "model", "direction_label", "pred_return", "predicted_close", "rank_score", "test_balanced_accuracy", "test_strategy_sharpe"], max_rows=12)}
-
-Diễn giải nhanh:
-
-- `direction_label` là tín hiệu hướng từ classifier hoặc ngưỡng return dự báo; `pred_return` là mức return kỳ vọng từ regressor/ước lượng regime. Với mô hình vừa classification vừa regression, hai lớp này có thể lệch nhau khi xác suất hướng yếu nhưng return kỳ vọng vẫn hơi dương.
-- Nếu `bullish_share` cao nhưng `median_pred_return` nhỏ, thị trường có thiên hướng tăng nhưng biên kỳ vọng chưa mạnh.
-- Nếu các mô hình tốt trong backtest đồng thuận với MACD/HMM, tín hiệu đáng chú ý hơn.
-- Nếu heatmap phân hóa mạnh giữa mô hình tuyến tính/kernel và mô hình cây/boosting, nên xem đó là trạng thái nhiễu hoặc chuyển regime.
-
-Ảnh dự báo tương lai:
-
-![Future Return Forecast]({artifacts["future_return"]})
-
-![Future Price Targets]({artifacts["future_price_targets"]})
-
-![Future Consensus]({artifacts["future_consensus"]})
-
-![Future Model Heatmap]({artifacts["future_heatmap"]})
-
-## Chỉ số học máy
-
-Các chỉ số chính:
-
-- `accuracy`: tỷ lệ dự báo đúng hướng tăng/giảm.
-- `balanced_accuracy`: accuracy cân bằng giữa lớp tăng và giảm, hữu ích khi thị trường thiên lệch tăng.
-- `precision`: khi mô hình báo tăng, tỷ lệ đúng là bao nhiêu.
-- `recall`: trong các giai đoạn thực tế tăng, mô hình bắt được bao nhiêu.
-- `f1`: cân bằng giữa precision và recall.
-- `roc_auc`: khả năng xếp hạng xác suất tăng.
-- `mae`, `rmse`, `r2`: sai số dự báo return.
-- `spearman_ic`: Information Coefficient dạng rank correlation giữa return dự báo và return thực tế.
-
-Ảnh heatmap:
-
-![Balanced Accuracy]({artifacts["balanced_accuracy_heatmap"]})
-
-![Sharpe]({artifacts["sharpe_heatmap"]})
-
-## Chỉ số tài chính
-
-Các chỉ số chính:
-
-- `strategy_total_return`: tổng lợi nhuận chiến lược long/flat trên test.
-- `strategy_cagr`: tăng trưởng kép năm hóa.
-- `strategy_ann_vol`: biến động năm hóa.
-- `strategy_sharpe`: lợi nhuận điều chỉnh rủi ro.
-- `strategy_sortino`: Sharpe chỉ phạt downside volatility.
-- `strategy_max_drawdown`: mức sụt giảm lớn nhất.
-- `strategy_calmar`: CAGR / Max Drawdown.
-- `strategy_profit_factor`: tổng lãi / tổng lỗ.
-- `strategy_exposure`: tỷ lệ thời gian ở trạng thái long.
-- `strategy_turnover`: mức thay đổi vị thế bình quân.
-- `strategy_beta_to_buy_hold`, `strategy_alpha_annualized`, `strategy_information_ratio`: so với buy-and-hold.
-
-## Trực quan hóa theo mô hình và horizon
-
-### Tổng quan giá, MACD và RSI
-
-![Price MACD RSI]({artifacts["price_macd"]})
-
-### Equity curves
-
-![Equity 5d]({artifacts["equity_5"]})
-
-![Equity 20d]({artifacts["equity_20"]})
-
-![Equity 60d]({artifacts["equity_60"]})
-
-### Forecast panels
-
-Mỗi panel hiển thị return tương lai thực tế, return dự báo và vùng xanh là giai đoạn mô hình chọn long.
-
-![Forecast 5d]({artifacts["forecast_5"]})
-
-![Forecast 20d]({artifacts["forecast_20"]})
-
-![Forecast 60d]({artifacts["forecast_60"]})
-
-### Feature importance
-
-![Feature Importance]({artifacts["feature_importance"]})
-
-## Cách chạy lại
+## Chạy lại
 
 ```bash
 /home/namngyh/miniconda3/envs/eda/bin/python run_benchmark.py
 ```
 
-Kết quả được ghi vào `outputs/`:
+Các artifact chính nằm trong `outputs/`:
 
-- `metrics_by_horizon.csv`: chỉ số học máy theo mô hình và horizon.
-- `financial_metrics_by_horizon.csv`: chỉ số tài chính theo mô hình và horizon.
-- `model_ranking.csv`: bảng xếp hạng tổng hợp.
-- `predictions.csv`: dự báo từng ngày trên tập test.
-- `future_forecasts.csv`: dự báo tương lai từ phiên mới nhất theo từng mô hình.
-- `future_consensus.csv`: bảng đồng thuận tương lai theo horizon.
-- `current_regime_forecast.csv`: regime hiện tại từ HMM theo từng horizon.
-- `feature_importance.csv`: top feature importance của các mô hình cây/boosting.
-- `regime_summary.csv`: trạng thái HMM và return kỳ vọng theo regime.
-- `figures/*.png`: toàn bộ biểu đồ.
+- `model_ranking.csv`: xếp hạng hai mô hình được giữ lại.
+- `forecast_metrics.csv`: sai số lợi suất, giá và chỉ số hướng.
+- `predictions.csv`: dự báo từng quan sát trên test.
+- `test_stability_by_year.csv`: kiểm tra độ ổn định theo năm.
+- `best_hyperparameters.csv`, `tuning_trials.csv`: tuning có thể tái lập cho hai mô hình.
+- `future_forecasts.csv`: dự báo 20 phiên từ dòng dữ liệu mới nhất.
+- `model_selection_audit.csv`, `model_selection_parameters_audit.csv`: bằng chứng so sánh tám mô hình trước khi dọn dẹp.
 
-Các file tuning bổ sung:
+## Phạm vi sau dọn dẹp
 
-- baseline metrics, financial metrics, predictions và ranking: kết quả cấu hình trước tuning trên cùng tập test.
-- tuning_trials.csv: toàn bộ 84 trial và điểm cross-validation.
-- best_hyperparameters.csv: tham số thắng cho từng model và horizon.
-- tuning_comparison.csv: so sánh out-of-sample baseline với tuned.
-
-## Lưu ý diễn giải
-
-Kết quả này là out-of-sample theo split thời gian, nhưng vẫn là nghiên cứu lịch sử. Search nhẹ
-giảm chi phí tính toán nhưng không đảm bảo mọi mô hình đều tốt hơn trên test; chính các delta âm
-trong bảng là bằng chứng cần giữ lại thay vì chỉ báo cáo mô hình thắng. Nếu dùng giao dịch thật cần
-bổ sung transaction cost, slippage, nested/walk-forward retraining, kiểm định ổn định theo từng
-regime và quản trị rủi ro vị thế.
+Pipeline hiện chỉ hỗ trợ horizon 20 và hai mô hình chiến thắng. Việc cố chạy horizon khác sẽ báo lỗi rõ ràng. Các thư viện XGBoost, LightGBM và CatBoost không còn là dependency của project.
 """
     output_path.write_text(body, encoding="utf-8")

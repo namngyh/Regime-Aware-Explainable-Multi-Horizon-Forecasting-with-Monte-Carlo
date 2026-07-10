@@ -3,4 +3,5 @@ __pycache__/
 .cache/
 .ipynb_checkpoints/
 .DS_Store
+.vscode/
 catboost_info/

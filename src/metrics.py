@@ -22,21 +22,52 @@ def _safe(value):
     return value
 
 
-def regression_metrics(y_true, y_pred):
+def regression_metrics(y_true, y_pred, current_close=None):
     if y_pred is None:
         return {}
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     corr = pd.Series(y_true).corr(pd.Series(y_pred), method="spearman")
-    return {
-        "mae": mean_absolute_error(y_true, y_pred),
+    mae = mean_absolute_error(y_true, y_pred)
+    naive_mae = mean_absolute_error(y_true, np.zeros_like(y_true))
+    naive_rmse = np.sqrt(mean_squared_error(y_true, np.zeros_like(y_true)))
+    result = {
+        "mae": mae,
         "rmse": rmse,
+        "mae_skill_vs_zero": 1 - mae / naive_mae if naive_mae > 0 else np.nan,
+        "rmse_skill_vs_zero": 1 - rmse / naive_rmse if naive_rmse > 0 else np.nan,
         "r2": r2_score(y_true, y_pred),
         "spearman_ic": _safe(corr),
         "pred_return_mean": np.mean(y_pred),
         "pred_return_std": np.std(y_pred),
     }
+    if current_close is not None:
+        current_close = np.asarray(current_close)
+        actual_price = current_close * (1 + y_true)
+        predicted_price = current_close * (1 + y_pred)
+        naive_price = current_close
+        price_mae = mean_absolute_error(actual_price, predicted_price)
+        price_rmse = np.sqrt(mean_squared_error(actual_price, predicted_price))
+        naive_price_mae = mean_absolute_error(actual_price, naive_price)
+        naive_price_rmse = np.sqrt(mean_squared_error(actual_price, naive_price))
+        result.update(
+            {
+                "price_mae": price_mae,
+                "price_rmse": price_rmse,
+                "price_mape": np.mean(
+                    np.abs(actual_price - predicted_price)
+                    / np.maximum(np.abs(actual_price), 1e-12)
+                ),
+                "price_mae_skill_vs_no_change": (
+                    1 - price_mae / naive_price_mae if naive_price_mae > 0 else np.nan
+                ),
+                "price_rmse_skill_vs_no_change": (
+                    1 - price_rmse / naive_price_rmse if naive_price_rmse > 0 else np.nan
+                ),
+            }
+        )
+    return result
 
 
 def classification_metrics(y_true, y_pred, y_score=None):
