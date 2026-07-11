@@ -6,3 +6,7 @@ seaborn
 hmmlearn
 arch
 lightgbm
+interpret
+PyYAML
+scipy
+pytest

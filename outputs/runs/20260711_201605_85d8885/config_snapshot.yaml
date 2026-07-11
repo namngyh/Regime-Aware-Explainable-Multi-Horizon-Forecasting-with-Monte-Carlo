@@ -1,0 +1,60 @@
+project_name: RAEMF-MC
+seed: 42
+horizons:
+- 20
+- 40
+- 60
+quick_mode: true
+data:
+  path: data.csv
+  date_column: date
+validation:
+  train_ratio: 0.7
+  validation_ratio: 0.15
+  n_splits: 4
+targets:
+  direction_threshold: 0.5
+  stress_lambda: 1.5
+  volatility_window: 20
+features:
+  min_history: 252
+hmm:
+  states:
+  - 3
+  - 4
+  - 5
+  seeds:
+  - 11
+  - 22
+  - 33
+  - 44
+  - 55
+  covariance_type: diag
+  n_iter: 300
+egarch:
+  candidates:
+  - EGARCH-t
+  - GJR-GARCH-t
+  - GARCH-t
+ebm:
+  max_bins: 128
+  max_rounds: 500
+  learning_rate: 0.03
+  min_samples_leaf: 20
+  outer_bags: 4
+  inner_bags: 0
+  interactions: 6
+  max_leaves: 3
+calibration:
+  methods:
+  - sigmoid
+  - isotonic
+bootstrap:
+  replicates: 50
+  block_length: 40
+monte_carlo:
+  paths: 1000
+  max_horizon: 60
+  mode: structural
+market_filter:
+  transaction_cost_bps: 5

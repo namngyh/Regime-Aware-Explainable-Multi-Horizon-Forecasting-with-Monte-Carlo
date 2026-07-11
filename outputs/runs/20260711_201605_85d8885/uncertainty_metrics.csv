@@ -1,0 +1,2 @@
+market_state,market_score,exposure_multiplier,allowed_strategies,restricted_strategies,risk_flags,human_readable_summary,technical_explanation,maximum_probability,probability_margin,ebm_entropy,hmm_confidence,bootstrap_std,feature_drift,model_disagreement,confidence_label,date
+Uncertain,0.053875054252005304,0.1350675,defensive/selective,leveraged long,"high_drawdown,uncertain",Trạng thái Uncertain; exposure tham khảo 14%.,"score=0.054, drawdown_probability=0.571",0.4218147353976341,0.08227220072583874,0.8926145559484042,0.9981100501839324,,0.0,0.0,Uncertain,2026-07-01

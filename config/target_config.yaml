@@ -1,0 +1,7 @@
+horizons: [20, 40, 60]
+direction_threshold: 0.5
+stress_lambda: 1.5
+volatility_window: 20
+epsilon: 1.0e-8
+class_order: [Bull, Sideway, Bear, Stress]
+

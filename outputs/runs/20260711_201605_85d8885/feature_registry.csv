@@ -1,0 +1,60 @@
+feature,group,available,missing_rate,definition
+ret_1,momentum_trend,True,0.0,ret 1
+log_ret_1,momentum_trend,True,0.0,log ret 1
+ret_5,momentum_trend,True,0.0,ret 5
+vol_5,volatility,True,0.0,vol 5
+price_to_sma_5,momentum_trend,True,0.0,price to sma 5
+ret_10,momentum_trend,True,0.0,ret 10
+vol_10,volatility,True,0.0,vol 10
+price_to_sma_10,momentum_trend,True,0.0,price to sma 10
+ret_20,momentum_trend,True,0.0,ret 20
+vol_20,volatility,True,0.0,vol 20
+price_to_sma_20,momentum_trend,True,0.0,price to sma 20
+ret_40,momentum_trend,True,0.0,ret 40
+vol_40,volatility,True,0.0,vol 40
+price_to_sma_40,momentum_trend,True,0.0,price to sma 40
+ret_60,momentum_trend,True,0.0,ret 60
+vol_60,volatility,True,0.0,vol 60
+price_to_sma_60,momentum_trend,True,0.0,price to sma 60
+ret_120,momentum_trend,True,0.0,ret 120
+vol_120,volatility,True,0.0,vol 120
+price_to_sma_120,momentum_trend,True,0.0,price to sma 120
+ema_spread,momentum_trend,True,0.0,ema spread
+macd,momentum_trend,True,0.0,macd
+macd_signal,momentum_trend,True,0.0,macd signal
+macd_hist,momentum_trend,True,0.0,macd hist
+macd_hist_slope,momentum_trend,True,0.0,macd hist slope
+rsi,momentum_trend,True,0.0,rsi
+adx,momentum_trend,True,0.0,adx
+atr_normalized,volatility,True,0.0,atr normalized
+trend_strength,momentum_trend,True,0.0,trend strength
+up_day_ratio_20,momentum_trend,True,0.0,up day ratio 20
+up_day_ratio_60,momentum_trend,True,0.0,up day ratio 60
+distance_to_52w_high,momentum_trend,True,0.0,distance to 52w high
+distance_to_52w_low,momentum_trend,True,0.0,distance to 52w low
+return_sign_persistence,momentum_trend,True,0.0,return sign persistence
+trend_consistency,momentum_trend,True,0.0,trend consistency
+downside_vol_20,volatility,True,0.0,downside vol 20
+downside_vol_60,volatility,True,0.0,downside vol 60
+upside_semivariance,volatility,True,0.0,upside semivariance
+downside_semivariance,volatility,True,0.0,downside semivariance
+rolling_skewness,momentum_trend,True,0.0,rolling skewness
+rolling_kurtosis,momentum_trend,True,0.0,rolling kurtosis
+parkinson_volatility,volatility,True,0.0,parkinson volatility
+range_volatility,momentum_trend,True,0.0,range volatility
+volatility_of_volatility,momentum_trend,True,0.0,volatility of volatility
+rolling_max_drawdown_20,volatility,True,0.0,rolling max drawdown 20
+rolling_max_drawdown_60,volatility,True,0.0,rolling max drawdown 60
+rolling_max_drawdown_120,volatility,True,0.0,rolling max drawdown 120
+drawdown_duration,volatility,True,0.0,drawdown duration
+recovery_ratio,momentum_trend,True,0.0,recovery ratio
+volume_zscore,volume,True,0.0,volume zscore
+volume_ratio_5,volume,True,0.0,volume ratio 5
+volume_ratio_20,volume,True,0.0,volume ratio 20
+volume_trend,volume,True,0.0,volume trend
+price_volume_divergence,volume,True,0.0,price volume divergence
+signed_volume_proxy,volume,True,0.0,signed volume proxy
+high_volume_up_day_ratio,volume,True,0.0,high volume up day ratio
+high_volume_down_day_ratio,volume,True,0.0,high volume down day ratio
+volume_volatility,volume,True,0.0,volume volatility
+volume_confirmation_score,volume,True,0.0,volume confirmation score

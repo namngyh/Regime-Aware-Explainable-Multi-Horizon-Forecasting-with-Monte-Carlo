@@ -1,0 +1,16 @@
+risk_on:
+  bull_probability_40: 0.55
+  bull_probability_60: 0.55
+  max_stress_probability_20: 0.15
+  max_drawdown_probability: 0.30
+risk_off:
+  bear_plus_stress_20: 0.50
+  stress_probability_40: 0.25
+  drawdown_probability: 0.45
+confidence:
+  high_probability: 0.65
+  high_margin: 0.25
+  uncertain_probability: 0.45
+  uncertain_margin: 0.10
+transaction_cost_bps: 5
+
