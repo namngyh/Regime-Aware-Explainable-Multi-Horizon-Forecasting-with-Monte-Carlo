@@ -1,0 +1,26 @@
+horizon,model,feature,importance
+20,HMM-EGARCH-LightGBM Quantile,vol_60,581
+20,HMM-EGARCH-LightGBM Quantile,vol_120,554
+20,HMM-EGARCH-LightGBM Quantile,sma_ratio_120,536
+20,HMM-EGARCH-LightGBM Quantile,ret_120,326
+20,HMM-EGARCH-LightGBM Quantile,vol_20,304
+20,HMM-EGARCH-LightGBM Quantile,macd_hist,268
+20,HMM-EGARCH-LightGBM Quantile,range_pct,266
+20,HMM-EGARCH-LightGBM Quantile,sma_ratio_60,171
+20,HMM-EGARCH-LightGBM Quantile,vol_10,165
+20,HMM-EGARCH-LightGBM Quantile,hmm_prob_state_1,138
+20,HMM-EGARCH-LightGBM Quantile,ret_60,136
+20,HMM-EGARCH-LightGBM Quantile,macd,135
+20,HMM-EGARCH-LightGBM Quantile,macd_signal,99
+20,HMM-EGARCH-LightGBM Quantile,hmm_prob_state_0,94
+20,HMM-EGARCH-LightGBM Quantile,hmm_prob_state_2,79
+20,HMM-EGARCH-LightGBM Quantile,ret_20,66
+20,HMM-EGARCH-LightGBM Quantile,volume_z_120,47
+20,HMM-EGARCH-LightGBM Quantile,sma_ratio_20,45
+20,HMM-EGARCH-LightGBM Quantile,volume_z_60,42
+20,HMM-EGARCH-LightGBM Quantile,sma_ratio_3,37
+20,HMM-EGARCH-LightGBM Quantile,sma_ratio_10,34
+20,HMM-EGARCH-LightGBM Quantile,vol_5,31
+20,HMM-EGARCH-LightGBM Quantile,rsi_14,30
+20,HMM-EGARCH-LightGBM Quantile,mom_120,26
+20,HMM-EGARCH-LightGBM Quantile,egarch_vol_1d,26

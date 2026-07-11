@@ -7,22 +7,36 @@ import pandas as pd
 os.environ.setdefault("MPLCONFIGDIR", str(Path(".cache/matplotlib").resolve()))
 
 from src.data import load_vnindex_csv
+from src.ensemble import combine_hmm_random_forest, tune_oof_hmm_rf_ensemble
 from src.features import chronological_split, make_features
+from src.hybrid import fit_predict_hybrid_quantile
+from src.hybrid_tuning import tune_hybrid_quantile
 from src.metrics import classification_metrics, financial_metrics, regression_metrics
 from src.models import (
     fit_predict_hmm,
-    fit_predict_macd,
-    macd_bullish_signal,
+    fit_predict_random_forest,
+    fit_predict_svr,
 )
 from src.plots import (
+    plot_actual_vs_predicted,
+    plot_bootstrap_intervals,
     plot_forecast_panel,
+    plot_feature_importance,
     plot_future_price_targets,
+    plot_future_projection_path,
     plot_future_return_forecast,
+    plot_hybrid_feature_importance,
     plot_metric_heatmap,
+    plot_ensemble_weight_curve,
     plot_price_macd,
+    plot_residual_diagnostics,
+    plot_quantile_future_band,
+    plot_quantile_test_intervals,
+    plot_yearly_score_heatmap,
     setup_plot_style,
 )
 from src.report import write_readme
+from src.research import block_bootstrap_intervals, pairwise_dm_tests
 from src.tuning import forecast_score, tune_horizon
 
 
@@ -38,14 +52,6 @@ def _split_summary(train, valid, test):
             for name, frame in [("train", train), ("valid", valid), ("test", test)]
         ]
     )
-
-
-def _add_selected_macd(frame, params):
-    result = frame.copy()
-    result["macd_selected"] = macd_bullish_signal(
-        result["close"], params["fast"], params["slow"], params["signal"]
-    ).to_numpy()
-    return result
 
 
 def _prediction_frame(test, bundle, horizon):
@@ -65,6 +71,8 @@ def _prediction_frame(test, bundle, horizon):
             "current_close": current_close,
             "actual_close": current_close * (1 + actual_return),
             "predicted_close": current_close * (1 + bundle.pred_return),
+            "pred_return_q10": bundle.extra.get("q10", np.full(len(test), np.nan)),
+            "pred_return_q90": bundle.extra.get("q90", np.full(len(test), np.nan)),
             "daily_return_next": daily_return,
             "strategy_return": bundle.pred_direction * daily_return,
             "buy_hold_return": daily_return,
@@ -141,33 +149,88 @@ def _yearly_stability(predictions):
     return pd.DataFrame(rows)
 
 
+def _quantile_metrics(predictions):
+    data = predictions.dropna(subset=["pred_return_q10", "pred_return_q90"])
+    if data.empty:
+        return pd.DataFrame()
+
+    def pinball(actual, forecast, alpha):
+        error = actual - forecast
+        return np.mean(np.maximum(alpha * error, (alpha - 1) * error))
+
+    rows = []
+    for model, group in data.groupby("model"):
+        actual = group["actual_return"].to_numpy()
+        q10 = group["pred_return_q10"].to_numpy()
+        q50 = group["pred_return"].to_numpy()
+        q90 = group["pred_return_q90"].to_numpy()
+        rows.append(
+            {
+                "model": model,
+                "coverage_80": np.mean((actual >= q10) & (actual <= q90)),
+                "mean_interval_width": np.mean(q90 - q10),
+                "pinball_q10": pinball(actual, q10, 0.1),
+                "pinball_q50": pinball(actual, q50, 0.5),
+                "pinball_q90": pinball(actual, q90, 0.9),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def _future_forecasts(
     full_df,
     feature_cols,
     horizon,
-    macd_params,
     hmm_params,
+    svr_params,
+    random_forest_params,
+    egarch_params,
+    lightgbm_params,
+    ensemble_weights,
     ranking,
 ):
     target = f"future_return_{horizon}d"
     train = full_df.dropna(subset=feature_cols + [target]).copy()
     latest = full_df.dropna(subset=feature_cols).iloc[[-1]].copy()
-    macd_frame = _add_selected_macd(full_df, macd_params)
-    macd_train = train.copy()
-    macd_latest = latest.copy()
-    macd_train["macd_selected"] = macd_frame.loc[macd_train.index, "macd_selected"]
-    macd_latest["macd_selected"] = macd_frame.loc[
-        macd_latest.index, "macd_selected"
-    ]
+    hmm_future_bundle = fit_predict_hmm(
+        train,
+        latest,
+        feature_cols,
+        horizon,
+        hmm_params=hmm_params,
+    )
+    svr_future_bundle = fit_predict_svr(
+        train,
+        latest,
+        feature_cols,
+        horizon,
+        params=svr_params,
+    )
+    forest_future_bundle = fit_predict_random_forest(
+        train,
+        latest,
+        feature_cols,
+        horizon,
+        params=random_forest_params,
+    )
+    hybrid_future_bundle = fit_predict_hybrid_quantile(
+        train,
+        latest,
+        feature_cols,
+        horizon,
+        hmm_params,
+        egarch_params,
+        lightgbm_params,
+    )
+    ensemble_future_bundle = combine_hmm_random_forest(
+        hmm_future_bundle, forest_future_bundle, ensemble_weights
+    )
     bundles = [
-        fit_predict_macd(macd_train, macd_latest, horizon),
-        fit_predict_hmm(
-            train,
-            latest,
-            feature_cols,
-            horizon,
-            hmm_params=hmm_params,
-        ),
+        hmm_future_bundle,
+        svr_future_bundle,
+        forest_future_bundle,
+        hybrid_future_bundle,
+        ensemble_future_bundle,
     ]
     latest_date = latest["date"].iloc[0]
     latest_close = latest["close"].iloc[0]
@@ -187,13 +250,54 @@ def _future_forecasts(
                 "pred_return": pred_return,
                 "pred_direction": int(bundle.pred_direction[0]),
                 "predicted_close": latest_close * (1 + pred_return),
+                "pred_return_q10": (
+                    float(bundle.extra["q10"][0])
+                    if "q10" in bundle.extra
+                    else np.nan
+                ),
+                "pred_return_q90": (
+                    float(bundle.extra["q90"][0])
+                    if "q90" in bundle.extra
+                    else np.nan
+                ),
+                "predicted_close_q10": (
+                    latest_close * (1 + float(bundle.extra["q10"][0]))
+                    if "q10" in bundle.extra
+                    else np.nan
+                ),
+                "predicted_close_q90": (
+                    latest_close * (1 + float(bundle.extra["q90"][0]))
+                    if "q90" in bundle.extra
+                    else np.nan
+                ),
                 "test_forecast_score": quality["forecast_score"],
                 "test_mae": quality["mae"],
                 "test_rmse": quality["rmse"],
                 "test_balanced_accuracy": quality["balanced_accuracy"],
+                "current_regime": (
+                    int(bundle.extra["predicted_states"][0])
+                    if bundle.model == "HMM Regime"
+                    else np.nan
+                ),
             }
         )
-    return pd.DataFrame(rows)
+    current_state = int(hmm_future_bundle.extra["predicted_states"][0])
+    regime_summary = pd.DataFrame(
+        [
+            {
+                "state": state,
+                "full_train_observations": hmm_future_bundle.extra[
+                    "state_counts"
+                ].get(state, 0),
+                "mean_forward_return": mean_return,
+                "is_current_regime": state == current_state,
+            }
+            for state, mean_return in sorted(
+                hmm_future_bundle.extra["state_mean_return"].items()
+            )
+        ]
+    )
+    return pd.DataFrame(rows), regime_summary
 
 
 def run_benchmark(data_path: Path, output_dir: Path, horizons=(20,)):
@@ -214,29 +318,82 @@ def run_benchmark(data_path: Path, output_dir: Path, horizons=(20,)):
     train_valid = pd.concat([train, valid], ignore_index=True)
     split_summary = _split_summary(train, valid, test)
 
-    print("Optimizing MACD and HMM for the 20-session horizon...")
-    macd_params, hmm_params, tuning_trials, best_parameters = tune_horizon(
-        train_valid, feature_cols, horizon
+    print("Optimizing HMM, SVR and Random Forest for the 20-session horizon...")
+    (
+        hmm_params,
+        svr_params,
+        random_forest_params,
+        tuning_trials,
+        best_parameters,
+    ) = tune_horizon(train_valid, feature_cols, horizon)
+
+    print("Optimizing HMM-EGARCH-LightGBM Quantile...")
+    (
+        egarch_params,
+        lightgbm_params,
+        hybrid_tuning_trials,
+        hybrid_best,
+    ) = tune_hybrid_quantile(
+        train_valid,
+        feature_cols,
+        horizon,
+        hmm_params,
     )
 
-    macd_all = _add_selected_macd(historical, macd_params).set_index("date")
-    macd_train = train_valid.copy()
-    macd_test = test.copy()
-    macd_train["macd_selected"] = macd_train["date"].map(
-        macd_all["macd_selected"]
+    print("Learning OOF HMM-Random Forest ensemble weights...")
+    (
+        ensemble_weights,
+        ensemble_weight_trials,
+        ensemble_oof_predictions,
+    ) = tune_oof_hmm_rf_ensemble(
+        train_valid,
+        feature_cols,
+        horizon,
+        hmm_params,
+        random_forest_params,
     )
-    macd_test["macd_selected"] = macd_test["date"].map(
-        macd_all["macd_selected"]
+
+    hmm_bundle = fit_predict_hmm(
+        train_valid,
+        test,
+        feature_cols,
+        horizon,
+        hmm_params=hmm_params,
+    )
+    svr_bundle = fit_predict_svr(
+        train_valid,
+        test,
+        feature_cols,
+        horizon,
+        params=svr_params,
+    )
+    random_forest_bundle = fit_predict_random_forest(
+        train_valid,
+        test,
+        feature_cols,
+        horizon,
+        params=random_forest_params,
+    )
+    hybrid_bundle = fit_predict_hybrid_quantile(
+        train_valid,
+        test,
+        feature_cols,
+        horizon,
+        hmm_params,
+        egarch_params,
+        lightgbm_params,
+    )
+    ensemble_bundle = combine_hmm_random_forest(
+        hmm_bundle,
+        random_forest_bundle,
+        ensemble_weights,
     )
     bundles = [
-        fit_predict_macd(macd_train, macd_test, horizon),
-        fit_predict_hmm(
-            train_valid,
-            test,
-            feature_cols,
-            horizon,
-            hmm_params=hmm_params,
-        ),
+        hmm_bundle,
+        svr_bundle,
+        random_forest_bundle,
+        hybrid_bundle,
+        ensemble_bundle,
     ]
     predictions = pd.concat(
         [_prediction_frame(test, bundle, horizon) for bundle in bundles],
@@ -244,12 +401,29 @@ def run_benchmark(data_path: Path, output_dir: Path, horizons=(20,)):
     )
     metrics, financial, ranking = _evaluate(predictions)
     stability = _yearly_stability(predictions)
-    future = _future_forecasts(
+    bootstrap = block_bootstrap_intervals(
+        predictions, n_bootstrap=1000, block_size=horizon
+    )
+    dm_tests = pairwise_dm_tests(predictions, horizon=horizon)
+    quantile_metrics = _quantile_metrics(predictions)
+    feature_importance = random_forest_bundle.extra["feature_importance"].head(20).copy()
+    feature_importance.insert(0, "model", "Random Forest")
+    feature_importance.insert(0, "horizon", horizon)
+    hybrid_feature_importance = hybrid_bundle.extra["feature_importance"].head(25).copy()
+    hybrid_feature_importance.insert(
+        0, "model", "HMM-EGARCH-LightGBM Quantile"
+    )
+    hybrid_feature_importance.insert(0, "horizon", horizon)
+    future, hmm_regime_summary = _future_forecasts(
         full_df,
         feature_cols,
         horizon,
-        macd_params,
         hmm_params,
+        svr_params,
+        random_forest_params,
+        egarch_params,
+        lightgbm_params,
+        ensemble_weights,
         ranking,
     )
 
@@ -260,8 +434,31 @@ def run_benchmark(data_path: Path, output_dir: Path, horizons=(20,)):
     financial.to_csv(output_dir / "financial_metrics.csv", index=False)
     ranking.to_csv(output_dir / "model_ranking.csv", index=False)
     stability.to_csv(output_dir / "test_stability_by_year.csv", index=False)
+    bootstrap.to_csv(output_dir / "bootstrap_confidence_intervals.csv", index=False)
+    dm_tests.to_csv(output_dir / "pairwise_dm_tests.csv", index=False)
+    feature_importance.to_csv(output_dir / "feature_importance.csv", index=False)
+    hybrid_feature_importance.to_csv(
+        output_dir / "hybrid_feature_importance.csv", index=False
+    )
+    quantile_metrics.to_csv(output_dir / "quantile_metrics.csv", index=False)
+    hmm_regime_summary.to_csv(output_dir / "hmm_regime_summary.csv", index=False)
     tuning_trials.to_csv(output_dir / "tuning_trials.csv", index=False)
     best_parameters.to_csv(output_dir / "best_hyperparameters.csv", index=False)
+    hybrid_tuning_trials.to_csv(
+        output_dir / "hybrid_tuning_trials.csv", index=False
+    )
+    pd.DataFrame([hybrid_best]).to_csv(
+        output_dir / "hybrid_best_hyperparameters.csv", index=False
+    )
+    ensemble_weight_trials.to_csv(
+        output_dir / "ensemble_weight_trials.csv", index=False
+    )
+    ensemble_oof_predictions.to_csv(
+        output_dir / "ensemble_oof_predictions.csv", index=False
+    )
+    pd.DataFrame([ensemble_weights]).to_csv(
+        output_dir / "ensemble_best_weights.csv", index=False
+    )
     future.to_csv(output_dir / "future_forecasts.csv", index=False)
 
     setup_plot_style()
@@ -271,6 +468,37 @@ def run_benchmark(data_path: Path, output_dir: Path, horizons=(20,)):
     plot_forecast_panel(predictions, horizon, figures_dir / "04_test_forecasts_20d.png")
     plot_future_return_forecast(future, figures_dir / "05_future_return_20d.png")
     plot_future_price_targets(future, figures_dir / "06_future_price_20d.png")
+    plot_feature_importance(
+        feature_importance, figures_dir / "07_random_forest_feature_importance.png"
+    )
+    plot_bootstrap_intervals(
+        bootstrap, figures_dir / "08_bootstrap_forecast_score.png"
+    )
+    plot_future_projection_path(
+        raw, future, figures_dir / "09_future_projection_path.png"
+    )
+    plot_actual_vs_predicted(
+        predictions, figures_dir / "10_actual_vs_predicted.png"
+    )
+    plot_residual_diagnostics(
+        predictions, figures_dir / "11_residual_diagnostics.png"
+    )
+    plot_yearly_score_heatmap(
+        stability, figures_dir / "12_yearly_score_heatmap.png"
+    )
+    plot_quantile_future_band(
+        raw, future, figures_dir / "13_hybrid_future_quantile_band.png"
+    )
+    plot_quantile_test_intervals(
+        predictions, figures_dir / "14_hybrid_test_quantiles.png"
+    )
+    plot_ensemble_weight_curve(
+        ensemble_weight_trials, figures_dir / "15_oof_ensemble_weights.png"
+    )
+    plot_hybrid_feature_importance(
+        hybrid_feature_importance,
+        figures_dir / "16_hybrid_feature_importance.png",
+    )
 
     write_readme(
         Path("README.md"),
@@ -282,8 +510,18 @@ def run_benchmark(data_path: Path, output_dir: Path, horizons=(20,)):
         split_summary=split_summary,
         ranking=ranking,
         stability=stability,
+        bootstrap=bootstrap,
+        dm_tests=dm_tests,
+        feature_importance=feature_importance,
+        hybrid_feature_importance=hybrid_feature_importance,
+        quantile_metrics=quantile_metrics,
+        hybrid_tuning_trials=hybrid_tuning_trials,
+        hybrid_best=pd.DataFrame([hybrid_best]),
+        ensemble_weight_trials=ensemble_weight_trials,
+        ensemble_weights=pd.DataFrame([ensemble_weights]),
+        hmm_regime_summary=hmm_regime_summary,
         best_parameters=best_parameters,
         tuning_trials=tuning_trials,
         future=future,
     )
-    print("Done. Retained models: MACD 8-24-9 and HMM Regime.")
+    print("Done. Compared 5 models including hybrid quantile and OOF ensemble.")

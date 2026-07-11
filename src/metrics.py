@@ -28,7 +28,10 @@ def regression_metrics(y_true, y_pred, current_close=None):
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-    corr = pd.Series(y_true).corr(pd.Series(y_pred), method="spearman")
+    if np.ptp(y_true) < 1e-12 or np.ptp(y_pred) < 1e-12:
+        corr = np.nan
+    else:
+        corr = pd.Series(y_true).corr(pd.Series(y_pred), method="spearman")
     mae = mean_absolute_error(y_true, y_pred)
     naive_mae = mean_absolute_error(y_true, np.zeros_like(y_true))
     naive_rmse = np.sqrt(mean_squared_error(y_true, np.zeros_like(y_true)))

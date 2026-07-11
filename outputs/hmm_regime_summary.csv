@@ -1,0 +1,4 @@
+state,full_train_observations,mean_forward_return,is_current_regime
+0,459,0.04407103405834512,False
+1,4792,0.005696975073293462,True
+2,885,0.006679768625346086,False
