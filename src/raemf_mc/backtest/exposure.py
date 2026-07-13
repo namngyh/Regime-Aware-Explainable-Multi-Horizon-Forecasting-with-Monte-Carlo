@@ -14,8 +14,20 @@ def labels_to_exposure(labels: pd.Series) -> pd.Series:
 
 
 def backtest_exposure(close: pd.Series, exposure: pd.Series, cost_bps: float = 10) -> pd.DataFrame:
+    """Apply a close-of-day signal to the following session's return."""
     ret = np.log(close / close.shift(1)).fillna(0.0)
-    exp = exposure.reindex(close.index).fillna(0.0)
-    turnover = exp.diff().abs().fillna(exp.abs())
-    strategy = exp.shift(1).fillna(0.0) * ret - turnover * (cost_bps / 10000.0)
-    return pd.DataFrame({"return": ret, "exposure": exp, "turnover": turnover, "strategy_return": strategy})
+    signal = exposure.reindex(close.index).fillna(0.0).clip(0.0, 1.0)
+    position = signal.shift(1).fillna(0.0)
+    turnover = position.diff().abs().fillna(position.abs())
+    transaction_cost = turnover * (cost_bps / 10000.0)
+    strategy = position * ret - transaction_cost
+    return pd.DataFrame(
+        {
+            "return": ret,
+            "signal": signal,
+            "exposure": position,
+            "turnover": turnover,
+            "transaction_cost": transaction_cost,
+            "strategy_return": strategy,
+        }
+    )

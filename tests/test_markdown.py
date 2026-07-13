@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _local_images(markdown: str) -> list[str]:
+    images = re.findall(r"!\[[^]]*\]\(([^)]+)\)", markdown)
+    return [image for image in images if not image.startswith(("http://", "https://"))]
+
+
+def _assert_markdown_structure(path: Path) -> None:
+    content = path.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    assert len(lines) > 20, f"{path} appears collapsed into too few lines"
+    fences = [line for line in lines if line.strip().startswith("```")]
+    assert len(fences) % 2 == 0, f"Unclosed code fence in {path}"
+    for index, line in enumerate(lines[:-1]):
+        if line.startswith("| ") and (index == 0 or not lines[index - 1].startswith("| ")):
+            assert re.match(r"^\|(?:\s*:?-+:?\s*\|)+$", lines[index + 1]), f"Malformed Markdown table near line {index + 1}"
+
+
+def test_readme_markdown_mermaid_tables_and_images_are_valid():
+    path = ROOT / "README.md"
+    content = path.read_text(encoding="utf-8")
+    _assert_markdown_structure(path)
+    assert "```mermaid\nflowchart LR\n" in content
+    assert content.count("<!-- RESULTS_START -->") == 1
+    assert content.count("<!-- RESULTS_END -->") == 1
+    images = _local_images(content)
+    result_images = [image for image in images if image.startswith("outputs/latest/figures/")]
+    assert len(result_images) >= 14
+    for image in images:
+        assert (ROOT / image).exists(), f"Broken README image path: {image}"
+
+
+def test_report_references_every_figure_and_comments_after_each_image():
+    path = ROOT / "outputs/latest/report.md"
+    content = path.read_text(encoding="utf-8")
+    _assert_markdown_structure(path)
+    referenced = set(_local_images(content))
+    actual = {f"figures/{path.name}" for path in (ROOT / "outputs/latest/figures").glob("*.png")}
+    assert actual
+    assert actual <= referenced
+    lines = content.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("!["):
+            window = "\n".join(lines[index + 1 : index + 10])
+            assert "**Nhận xét định lượng:**" in window, f"Missing figure interpretation after: {line}"

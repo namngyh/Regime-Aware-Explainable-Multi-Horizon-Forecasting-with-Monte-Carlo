@@ -1,6 +1,4 @@
 import numpy as np
-import pandas as pd
-
 from raemf_mc.calibration.metrics import assert_probability_matrix
 from raemf_mc.calibration.temperature_scaling import apply_temperature
 

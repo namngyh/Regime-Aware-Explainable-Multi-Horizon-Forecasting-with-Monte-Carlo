@@ -5,12 +5,23 @@ on:
   pull_request:
 
 jobs:
-  unit:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: python -m pip install -e . pytest
-      - run: python -m pytest -q
+          cache: pip
+      - name: Install package and quality tools
+        run: python -m pip install -e ".[dev]"
+      - name: Lint Python
+        run: python -m ruff check src tests scripts
+      - name: Check package import
+        run: python -c "import raemf_mc; import raemf_mc.pipeline"
+      - name: Unit and smoke tests
+        env:
+          MPLCONFIGDIR: /tmp/matplotlib-raemf
+        run: python -m pytest -q
+      - name: Explicit Markdown and image validation
+        run: python -m pytest -q tests/test_markdown.py

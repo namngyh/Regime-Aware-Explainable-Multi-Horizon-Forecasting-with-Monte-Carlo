@@ -35,3 +35,11 @@ def assert_backtest_one_day_lag(signals: pd.Series, returns: pd.Series, strategy
     expected = signals.shift(1).fillna(0.0) * returns
     if not np.allclose(expected.fillna(0.0), strategy_returns.fillna(0.0)):
         raise AssertionError("Backtest return does not use one-day lag")
+
+
+def assert_backtest_dates_are_oos(backtest_dates: pd.Series, prediction_dates: pd.Series) -> None:
+    """Require the backtest calendar to match the persisted OOS predictions."""
+    left = pd.DatetimeIndex(pd.to_datetime(backtest_dates).drop_duplicates().sort_values())
+    right = pd.DatetimeIndex(pd.to_datetime(prediction_dates).drop_duplicates().sort_values())
+    if not left.equals(right):
+        raise AssertionError("Backtest dates do not exactly match OOS prediction dates")

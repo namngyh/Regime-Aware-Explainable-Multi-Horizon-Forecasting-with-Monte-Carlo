@@ -28,7 +28,8 @@ def align_proba(classes: np.ndarray | list[object], proba: np.ndarray) -> np.nda
     zero = row_sum[:, 0] <= 0
     out[zero] = 1.0 / len(CLASS_ORDER)
     out[~zero] = out[~zero] / row_sum[~zero]
-    return np.clip(out, 1e-9, 1.0)
+    out = np.clip(out, 1e-9, 1.0)
+    return out / out.sum(axis=1, keepdims=True)
 
 
 def fill_features(train: pd.DataFrame, *others: pd.DataFrame) -> tuple[pd.DataFrame, ...]:

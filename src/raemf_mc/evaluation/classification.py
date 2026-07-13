@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import (
     accuracy_score,
-    balanced_accuracy_score,
     confusion_matrix,
     matthews_corrcoef,
     precision_recall_fscore_support,
@@ -29,7 +28,7 @@ def evaluate_predictions(y_true: pd.Series, proba: np.ndarray, model: str, horiz
         "horizon": horizon,
         "n_obs": int(len(y_true)),
         "accuracy": float(accuracy_score(y_true.astype(str), y_pred)),
-        "balanced_accuracy": float(balanced_accuracy_score(y_true.astype(str), y_pred)),
+        "balanced_accuracy": float(np.mean(recall)),
         "macro_precision": float(macro[0]),
         "macro_recall": float(macro[1]),
         "macro_f1": float(macro[2]),
@@ -38,6 +37,8 @@ def evaluate_predictions(y_true: pd.Series, proba: np.ndarray, model: str, horiz
         "brier": multiclass_brier(y_true, proba),
         "log_loss": safe_log_loss(y_true, proba),
         "ece": expected_calibration_error(y_true, proba),
+        "recall_bull": float(recall[CLASS_ORDER.index("Bull")]),
+        "recall_sideway": float(recall[CLASS_ORDER.index("Sideway")]),
         "recall_bear": float(recall[CLASS_ORDER.index("Bear")]),
         "recall_stress": float(recall[CLASS_ORDER.index("Stress")]),
     }

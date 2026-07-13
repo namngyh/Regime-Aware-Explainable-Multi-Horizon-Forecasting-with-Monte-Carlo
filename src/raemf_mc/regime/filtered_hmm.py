@@ -10,11 +10,14 @@ from hmmlearn.hmm import GaussianHMM
 from scipy.special import logsumexp
 from sklearn.preprocessing import StandardScaler
 
+from raemf_mc.regime.state_alignment import align_states, reorder_transition
+
 
 @dataclass
 class FilteredHMMResult:
     probabilities: pd.DataFrame
     diagnostics: dict[str, object]
+    state_mapping: pd.DataFrame
 
 
 def _log_gaussian_diag(x: np.ndarray, means: np.ndarray, covars: np.ndarray) -> np.ndarray:
@@ -52,7 +55,7 @@ def fit_filtered_hmm(
     hmm_cols = [c for c in ["ret_1", "ewma_volatility", "log_return_20"] if c in base_features.columns]
     if len(hmm_cols) < 2:
         hmm_cols = list(base_features.columns[: min(4, base_features.shape[1])])
-    x = base_features[hmm_cols].replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0.0)
+    x = base_features[hmm_cols].replace([np.inf, -np.inf], np.nan).ffill().fillna(0.0)
     scaler = StandardScaler().fit(x.iloc[train_idx])
     xs = scaler.transform(x)
     best: GaussianHMM | None = None
@@ -83,6 +86,9 @@ def fit_filtered_hmm(
     else:
         probs = forward_filter(best, xs)
         trans = best.transmat_
+    alignment = align_states(probs, returns, train_idx)
+    probs = probs[:, alignment.raw_order]
+    trans = reorder_transition(trans, alignment.raw_order)
     prob_df = pd.DataFrame(probs, index=base_features.index, columns=[f"hmm_prob_state_{i}" for i in range(n_states)])
     entropy = -(prob_df * np.log(prob_df.clip(lower=1e-12))).sum(axis=1)
     prob_df["hmm_entropy"] = entropy
@@ -100,11 +106,16 @@ def fit_filtered_hmm(
     most_likely = prob_only.to_numpy().argmax(axis=1)
     duration = pd.Series(most_likely).groupby((pd.Series(most_likely) != pd.Series(most_likely).shift()).cumsum()).cumcount() + 1
     prob_df["hmm_state_duration"] = duration.to_numpy()
+    state_labels = alignment.mapping.sort_values("aligned_state")["economic_label"].tolist()
+    prob_df["hmm_state_label"] = [state_labels[i] for i in most_likely]
     diagnostics = {
         "n_states": n_states,
         "score": best_score,
         "transition_matrix": trans.tolist(),
+        "state_mean": state_mean,
+        "state_volatility": state_vol,
+        "state_labels": state_labels,
         "warnings": warnings,
         "feature_columns": hmm_cols,
     }
-    return FilteredHMMResult(probabilities=prob_df, diagnostics=diagnostics)
+    return FilteredHMMResult(probabilities=prob_df, diagnostics=diagnostics, state_mapping=alignment.mapping)

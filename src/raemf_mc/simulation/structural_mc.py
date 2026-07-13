@@ -1,11 +1,177 @@
-"""State-conditioned structural Monte Carlo."""
+"""State-conditioned Monte Carlo with recursive EGARCH Student-t risk."""
 
 from __future__ import annotations
+
+from dataclasses import dataclass
+from math import gamma, sqrt
 
 import numpy as np
 import pandas as pd
 
+from raemf_mc.simulation.reweighting import tempered_class_weights, weighted_quantile
 from raemf_mc.simulation.risk_metrics import max_drawdown
+
+
+@dataclass
+class SimulationOutput:
+    paths: np.ndarray
+    weights: np.ndarray
+    terminal_states: np.ndarray
+    quantiles: pd.DataFrame
+    summary: pd.DataFrame
+    state_distribution: pd.DataFrame
+
+
+def _student_abs_expectation(nu: float) -> float:
+    """E|Z| for a variance-one Student-t innovation."""
+    nu = max(float(nu), 2.05)
+    raw = 2.0 * sqrt(nu) * gamma((nu + 1.0) / 2.0) / ((nu - 1.0) * sqrt(np.pi) * gamma(nu / 2.0))
+    return raw * sqrt((nu - 2.0) / nu)
+
+
+def _draw_next_states(rng: np.random.Generator, states: np.ndarray, transition: np.ndarray) -> np.ndarray:
+    uniforms = rng.random(len(states))
+    cumulative = np.cumsum(transition[states], axis=1)
+    return (uniforms[:, None] > cumulative).sum(axis=1).clip(max=transition.shape[0] - 1)
+
+
+def simulate_paths_detailed(
+    last_price: float,
+    current_state_prob: np.ndarray,
+    transition: np.ndarray,
+    state_mean: np.ndarray,
+    sigma: float,
+    horizon: int,
+    paths: int = 1000,
+    seed: int = 42,
+    *,
+    state_volatility: np.ndarray | None = None,
+    egarch_params: dict[str, float] | None = None,
+    nu: float | None = None,
+    target_class_probabilities: np.ndarray | None = None,
+    state_to_class: np.ndarray | None = None,
+) -> SimulationOutput:
+    """Simulate paths and return weighted risk diagnostics.
+
+    HMM state affects both drift and volatility. EGARCH parameters and Student-t
+    degrees of freedom come from the fitted risk model when supplied. EBM
+    horizon probabilities reweight terminal-state paths with an ESS safeguard.
+    """
+    rng = np.random.default_rng(seed + horizon)
+    state_prob = np.asarray(current_state_prob, dtype=float)
+    state_prob = np.clip(state_prob, 1e-12, None)
+    state_prob /= state_prob.sum()
+    transition = np.asarray(transition, dtype=float)
+    transition = np.clip(transition, 1e-12, None)
+    transition /= transition.sum(axis=1, keepdims=True)
+    state_mean = np.asarray(state_mean, dtype=float)
+    n_states = len(state_prob)
+    sim = np.empty((paths, horizon + 1), dtype=float)
+    sim[:, 0] = last_price
+    states = rng.choice(n_states, size=paths, p=state_prob)
+
+    params = egarch_params or {}
+    omega = float(params.get("omega", -0.08))
+    alpha = float(params.get("alpha[1]", 0.10))
+    gamma_leverage = float(params.get("gamma[1]", -0.05))
+    beta = float(np.clip(params.get("beta[1]", 0.94), 0.0, 0.995))
+    fitted_nu = max(float(nu if nu is not None else params.get("nu", 8.0)), 2.05)
+    log_variance = np.full(paths, np.log(max((sigma * 100.0) ** 2, 1e-10)))
+    previous_z = np.zeros(paths, dtype=float)
+    expected_abs_z = _student_abs_expectation(fitted_nu)
+    if state_volatility is None:
+        state_scale = np.ones(n_states, dtype=float)
+    else:
+        state_volatility = np.maximum(np.asarray(state_volatility, dtype=float), 1e-8)
+        reference = float(np.sum(state_prob * state_volatility))
+        state_scale = np.clip(state_volatility / max(reference, 1e-8), 0.50, 2.50)
+
+    for step in range(1, horizon + 1):
+        states = _draw_next_states(rng, states, transition)
+        log_variance = (
+            omega
+            + beta * log_variance
+            + alpha * (np.abs(previous_z) - expected_abs_z)
+            + gamma_leverage * previous_z
+        )
+        log_variance = np.clip(log_variance, -20.0, 20.0)
+        standardized_t = rng.standard_t(df=fitted_nu, size=paths) * sqrt((fitted_nu - 2.0) / fitted_nu)
+        conditional_sigma = np.sqrt(np.exp(log_variance)) / 100.0
+        shocks = standardized_t * conditional_sigma * state_scale[states]
+        simulated_return = np.clip(state_mean[states] + shocks, -0.25, 0.25)
+        sim[:, step] = np.maximum(sim[:, step - 1] * np.exp(simulated_return), 1e-6)
+        previous_z = standardized_t * state_scale[states]
+
+    if state_to_class is None:
+        state_to_class = np.arange(n_states, dtype=int) % 4
+    state_to_class = np.asarray(state_to_class, dtype=int)
+    terminal_classes = state_to_class[states]
+    if target_class_probabilities is None:
+        weights = np.full(paths, 1.0 / paths)
+        ess = float(paths)
+        tempering_power = 1.0
+        proposal = np.bincount(terminal_classes, minlength=4) / paths
+    else:
+        weights, ess, tempering_power, proposal = tempered_class_weights(
+            terminal_classes,
+            np.asarray(target_class_probabilities, dtype=float),
+            n_classes=4,
+        )
+
+    terminal_return = np.log(sim[:, -1] / last_price)
+    drawdowns = max_drawdown(sim)
+    q_levels = np.array([0.025, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.975])
+    path_quantiles = np.column_stack(
+        [weighted_quantile(sim[:, step], q_levels, weights) for step in range(horizon + 1)]
+    )
+    quantiles = pd.DataFrame(path_quantiles.T, columns=[f"q{int(q * 1000):03d}" for q in q_levels])
+    quantiles.insert(0, "step", np.arange(horizon + 1))
+    return_quantiles = weighted_quantile(terminal_return, q_levels, weights)
+    var_cut = float(weighted_quantile(terminal_return, np.array([0.05]), weights)[0])
+    tail_mask = terminal_return <= var_cut
+    tail_weights = weights[tail_mask]
+    cvar = -float(np.sum(terminal_return[tail_mask] * tail_weights) / max(tail_weights.sum(), 1e-12))
+    weighted_state = np.bincount(states, weights=weights, minlength=n_states)
+    raw_state = np.bincount(states, minlength=n_states) / paths
+    state_distribution = pd.DataFrame(
+        {
+            "horizon": horizon,
+            "state": np.arange(n_states),
+            "raw_probability": raw_state,
+            "weighted_probability": weighted_state,
+        }
+    )
+    dominant_state = int(np.argmax(weighted_state))
+    summary = pd.DataFrame(
+        {
+            "horizon": [horizon],
+            "expected_return": [float(np.sum(terminal_return * weights))],
+            "median_return": [float(return_quantiles[4])],
+            "q01": [float(weighted_quantile(terminal_return, np.array([0.01]), weights)[0])],
+            "q05": [float(return_quantiles[1])],
+            "q25": [float(return_quantiles[3])],
+            "q50": [float(return_quantiles[4])],
+            "q75": [float(return_quantiles[5])],
+            "q95": [float(return_quantiles[7])],
+            "q99": [float(weighted_quantile(terminal_return, np.array([0.99]), weights)[0])],
+            "prob_positive": [float(weights[terminal_return > 0].sum())],
+            "prob_negative": [float(weights[terminal_return < 0].sum())],
+            "prob_drawdown_gt_5pct": [float(weights[drawdowns < -0.05].sum())],
+            "prob_drawdown_gt_10pct": [float(weights[drawdowns < -0.10].sum())],
+            "prob_drawdown_gt_15pct": [float(weights[drawdowns < -0.15].sum())],
+            "prob_drawdown_gt_20pct": [float(weights[drawdowns < -0.20].sum())],
+            "var_95": [-var_cut],
+            "cvar_95": [cvar],
+            "max_drawdown_mean": [float(np.sum(drawdowns * weights))],
+            "ess": [ess],
+            "ess_fraction": [ess / paths],
+            "tempering_power": [tempering_power],
+            "student_t_nu": [fitted_nu],
+            "dominant_terminal_state": [dominant_state],
+            "proposal_class_probabilities": [";".join(f"{x:.8f}" for x in proposal)],
+        }
+    )
+    return SimulationOutput(sim, weights, states, quantiles, summary, state_distribution)
 
 
 def simulate_paths(
@@ -17,38 +183,18 @@ def simulate_paths(
     horizon: int,
     paths: int = 1000,
     seed: int = 42,
+    **kwargs: object,
 ) -> tuple[np.ndarray, pd.DataFrame]:
-    rng = np.random.default_rng(seed + horizon)
-    n_states = len(current_state_prob)
-    sim = np.empty((paths, horizon + 1), dtype=float)
-    sim[:, 0] = last_price
-    states = rng.choice(n_states, size=paths, p=current_state_prob / current_state_prob.sum())
-    for t in range(1, horizon + 1):
-        means = state_mean[states]
-        shocks = rng.standard_t(df=6, size=paths) * sigma
-        ret = np.clip(means + shocks, -0.25, 0.25)
-        sim[:, t] = np.maximum(sim[:, t - 1] * np.exp(ret), 1e-6)
-        for i in range(paths):
-            states[i] = rng.choice(n_states, p=transition[states[i]] / transition[states[i]].sum())
-    terminal_return = np.log(sim[:, -1] / last_price)
-    dd = max_drawdown(sim)
-    summary = pd.DataFrame(
-        {
-            "horizon": [horizon],
-            "expected_return": [float(terminal_return.mean())],
-            "median_return": [float(np.median(terminal_return))],
-            "q01": [float(np.quantile(terminal_return, 0.01))],
-            "q05": [float(np.quantile(terminal_return, 0.05))],
-            "q25": [float(np.quantile(terminal_return, 0.25))],
-            "q50": [float(np.quantile(terminal_return, 0.50))],
-            "q75": [float(np.quantile(terminal_return, 0.75))],
-            "q95": [float(np.quantile(terminal_return, 0.95))],
-            "q99": [float(np.quantile(terminal_return, 0.99))],
-            "prob_negative": [float((terminal_return < 0).mean())],
-            "prob_drawdown_gt_10pct": [float((dd < -0.10).mean())],
-            "var_95": [float(-np.quantile(terminal_return, 0.05))],
-            "cvar_95": [float(-terminal_return[terminal_return <= np.quantile(terminal_return, 0.05)].mean())],
-            "max_drawdown_mean": [float(dd.mean())],
-        }
+    """Backward-compatible wrapper returning paths and summary."""
+    result = simulate_paths_detailed(
+        last_price,
+        current_state_prob,
+        transition,
+        state_mean,
+        sigma,
+        horizon,
+        paths,
+        seed,
+        **kwargs,
     )
-    return sim, summary
+    return result.paths, result.summary

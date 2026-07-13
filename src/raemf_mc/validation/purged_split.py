@@ -28,9 +28,9 @@ class PurgedWalkForwardSplit:
     def split(self, dates: pd.Series, target_end_dates: pd.Series):
         n = len(dates)
         val_size = self.validation_size or max(30, n // (self.n_splits + 3))
-        min_train = max(80, val_size)
+        first_validation = max(80, n - self.n_splits * val_size)
         for fold in range(self.n_splits):
-            val_start_pos = min_train + fold * val_size
+            val_start_pos = first_validation + fold * val_size
             val_end_pos = min(val_start_pos + val_size, n)
             if val_end_pos <= val_start_pos or val_start_pos >= n:
                 break

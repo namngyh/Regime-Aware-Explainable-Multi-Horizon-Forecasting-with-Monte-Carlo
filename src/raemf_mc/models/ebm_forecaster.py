@@ -7,7 +7,6 @@ import pandas as pd
 from interpret.glassbox import ExplainableBoostingClassifier
 from sklearn.ensemble import HistGradientBoostingClassifier
 
-from raemf_mc import CLASS_ORDER
 from raemf_mc.models.base import align_proba, class_weights
 
 
@@ -31,6 +30,8 @@ class EBMForecaster:
                 interactions=int(self.params.get("interactions", 5)),
                 learning_rate=float(self.params.get("learning_rate", 0.03)),
                 max_rounds=int(self.params.get("max_rounds", 120)),
+                outer_bags=int(self.params.get("outer_bags", 2)),
+                min_samples_leaf=int(self.params.get("min_samples_leaf", 2)),
                 n_jobs=1,
             )
             self.model.fit(x, y, sample_weight=sw)

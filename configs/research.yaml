@@ -1,4 +1,5 @@
 runtime:
+  mode: research
   seed: 42
   max_threads: 4
   cache_features: true
@@ -25,9 +26,11 @@ risk:
 models:
   ebm:
     max_bins: 192
-    interactions: 8
+    interactions: 0
     learning_rate: 0.02
     max_rounds: 240
+    outer_bags: 8
+    min_samples_leaf: 2
   xgboost:
     n_estimators: 300
     max_depth: 3
@@ -35,6 +38,12 @@ models:
   random_forest:
     n_estimators: 400
     max_depth: 8
+tuning:
+  enabled: true
+  trials_per_horizon: 60
+  folds: 5
+  validation_size: 320
+  timeout_seconds_per_horizon: 3600
 monte_carlo:
   paths: 3000
   chunk_size: 500

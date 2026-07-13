@@ -50,7 +50,14 @@ def fit_egarch_features(returns: pd.Series, train_idx: np.ndarray) -> EGARCHResu
             warnings.append("EGARCH optimizer did not report clean convergence")
     except Exception as exc:  # pragma: no cover - optimizer dependent
         warnings.append(f"EGARCH failed; fallback EWMA volatility used: {exc}")
-        sigma = ret.ewm(span=40, adjust=False, min_periods=5).std().bfill().fillna(ret.std() or 1e-4).to_numpy()
+        sigma = (
+            ret.ewm(span=40, adjust=False, min_periods=5)
+            .std()
+            .fillna(ret.expanding(min_periods=2).std())
+            .fillna(1e-4)
+            .clip(lower=1e-6)
+            .to_numpy()
+        )
         log_var = np.log(np.maximum(sigma**2, 1e-12))
         std_resid = (ret / np.maximum(sigma, 1e-8)).clip(-20, 20).to_numpy()
         converged = False
@@ -64,5 +71,11 @@ def fit_egarch_features(returns: pd.Series, train_idx: np.ndarray) -> EGARCHResu
     f["egarch_tail_risk_score"] = f["egarch_sigma"] * (1 + f["egarch_negative_shock"].abs())
     return EGARCHResult(
         features=f.replace([np.inf, -np.inf], np.nan),
-        diagnostics={"converged": converged, "params": params, "warnings": warnings, "dist": "StudentsT"},
+        diagnostics={
+            "converged": converged,
+            "params": params,
+            "warnings": warnings,
+            "dist": "StudentsT",
+            "nu": float(params.get("nu", 8.0)),
+        },
     )

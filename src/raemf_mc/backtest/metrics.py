@@ -23,7 +23,9 @@ def backtest_metrics(bt: pd.DataFrame, name: str) -> dict[str, float | str]:
         "calmar": ann_ret / abs(float(dd.min())) if dd.min() < 0 else 0.0,
         "max_drawdown": float(dd.min()),
         "turnover": float(bt["turnover"].sum()),
+        "total_transaction_cost": float(bt.get("transaction_cost", pd.Series(0.0, index=bt.index)).sum()),
         "hit_rate": float((ret > 0).mean()),
         "average_exposure": float(bt["exposure"].mean()),
+        "time_in_market": float((bt["exposure"] > 0).mean()),
         "state_changes": int((bt["exposure"].diff().fillna(0) != 0).sum()),
     }

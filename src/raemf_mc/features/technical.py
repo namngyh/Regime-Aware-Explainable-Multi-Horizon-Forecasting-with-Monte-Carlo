@@ -108,11 +108,17 @@ def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, FeatureRegistry]:
             reg.add(name, "volume", 60, "volume", requires_volume=True)
 
     date = pd.to_datetime(df["date"])
-    x["month"] = date.dt.month
-    x["quarter"] = date.dt.quarter
-    x["day_of_week"] = date.dt.dayofweek
-    x["is_month_start"] = date.dt.is_month_start.astype(float)
-    x["is_month_end"] = date.dt.is_month_end.astype(float)
+    calendar = pd.DataFrame(
+        {
+            "month": date.dt.month,
+            "quarter": date.dt.quarter,
+            "day_of_week": date.dt.dayofweek,
+            "is_month_start": date.dt.is_month_start.astype(float),
+            "is_month_end": date.dt.is_month_end.astype(float),
+        },
+        index=df.index,
+    )
+    x = pd.concat([x, calendar], axis=1)
     for name in ["month", "quarter", "day_of_week", "is_month_start", "is_month_end"]:
         reg.add(name, "calendar", 0, "date")
     x = x.replace([np.inf, -np.inf], np.nan)

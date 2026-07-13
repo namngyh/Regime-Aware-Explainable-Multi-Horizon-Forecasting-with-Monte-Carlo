@@ -1,4 +1,5 @@
 runtime:
+  mode: laptop
   seed: 42
   max_threads: 4
   cache_features: true
@@ -24,10 +25,12 @@ risk:
   egarch_q: 1
 models:
   ebm:
-    max_bins: 128
-    interactions: 5
+    max_bins: 96
+    interactions: 0
     learning_rate: 0.03
-    max_rounds: 120
+    max_rounds: 80
+    outer_bags: 2
+    min_samples_leaf: 2
   xgboost:
     n_estimators: 160
     max_depth: 3
@@ -35,6 +38,12 @@ models:
   random_forest:
     n_estimators: 240
     max_depth: 6
+tuning:
+  enabled: true
+  trials_per_horizon: 15
+  folds: 3
+  validation_size: 240
+  timeout_seconds_per_horizon: 900
 monte_carlo:
   paths: 1200
   chunk_size: 400

@@ -9,6 +9,7 @@ from pathlib import Path
 from raemf_mc.config import load_config
 from raemf_mc.data.validation import validate_data_file
 from raemf_mc.pipeline import run_pipeline
+from raemf_mc.reporting.plots import generate_all_plots
 from raemf_mc.reporting.report_builder import build_docs_and_readme, build_run_report
 
 
@@ -26,12 +27,17 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("report")
     p.add_argument("--run-dir", required=True)
 
+    p = sub.add_parser("plots")
+    p.add_argument("--run-dir", required=True)
+    p.add_argument("--data", default="data.csv")
+
     p = sub.add_parser("forecast-latest")
     p.add_argument("--data", required=True)
     p.add_argument("--config", required=True)
 
     p = sub.add_parser("reproduce")
-    p.add_argument("--run-dir", required=True)
+    p.add_argument("--data", default="data.csv")
+    p.add_argument("--config", default="configs/laptop.yaml")
     return parser
 
 
@@ -49,10 +55,13 @@ def main(argv: list[str] | None = None) -> None:
         build_run_report(args.run_dir)
         build_docs_and_readme(args.run_dir)
         print(Path(args.run_dir) / "report.md")
+    elif args.cmd == "plots":
+        figures = generate_all_plots(args.run_dir, args.data)
+        print(f"Generated {len(figures)} figures in {Path(args.run_dir) / 'figures'}")
     elif args.cmd == "reproduce":
-        build_run_report(args.run_dir)
-        build_docs_and_readme(args.run_dir)
-        print(f"Rebuilt report for {args.run_dir}")
+        config = load_config(args.config)
+        run_dir = run_pipeline(args.data, config)
+        print(run_dir)
 
 
 if __name__ == "__main__":
