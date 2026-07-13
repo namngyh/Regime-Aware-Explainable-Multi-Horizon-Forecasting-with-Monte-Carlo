@@ -30,6 +30,9 @@ def test_readme_markdown_mermaid_tables_and_images_are_valid():
     assert "```mermaid\nflowchart LR\n" in content
     assert content.count("<!-- RESULTS_START -->") == 1
     assert content.count("<!-- RESULTS_END -->") == 1
+    assert "\\(" not in content and "\\)" not in content, "Use GitHub-compatible $...$ for inline math"
+    assert "$$" not in content, "Use fenced math blocks for stable GitHub rendering"
+    assert content.count("```math") == 4
     images = _local_images(content)
     result_images = [image for image in images if image.startswith("outputs/latest/figures/")]
     assert len(result_images) >= 14

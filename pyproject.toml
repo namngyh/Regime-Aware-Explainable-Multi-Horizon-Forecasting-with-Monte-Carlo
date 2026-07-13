@@ -7,7 +7,7 @@ name = "raemf-mc"
 version = "0.2.0"
 description = "Regime-Aware Explainable Multi-Horizon Forecasting with Monte Carlo for VN-Index"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Nguyen Hoai Nam" }]
 license = { text = "MIT" }
 keywords = ["VN-Index", "regime", "EGARCH", "EBM", "Monte Carlo"]
@@ -18,10 +18,10 @@ dependencies = [
   "scipy>=1.17,<2",
   "matplotlib>=3.10,<4",
   "PyYAML>=6,<7",
-  "xgboost>=3.3,<4",
+  "xgboost>=3.2,<4",
   "hmmlearn>=0.3,<0.4",
   "arch>=8,<9",
-  "interpret>=0.7,<0.8",
+  "interpret-core>=0.7,<0.8",
 ]
 
 [project.optional-dependencies]

@@ -1,7 +1,7 @@
 # RAEMF-MC: Regime-Aware Explainable Multi-Horizon Forecasting with Monte Carlo
 
 [![GitHub Actions](https://github.com/namngyh/Regime-Aware-Explainable-Multi-Horizon-Forecasting-with-Monte-Carlo/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/namngyh/Regime-Aware-Explainable-Multi-Horizon-Forecasting-with-Monte-Carlo/actions/workflows/tests.yml)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tests](https://img.shields.io/github/actions/workflow/status/namngyh/Regime-Aware-Explainable-Multi-Horizon-Forecasting-with-Monte-Carlo/tests.yml?branch=main&label=tests)](https://github.com/namngyh/Regime-Aware-Explainable-Multi-Horizon-Forecasting-with-Monte-Carlo/actions/workflows/tests.yml)
 [![Reproducible research](https://img.shields.io/badge/research-reproducible-2ea44f)](docs/reproducibility.md)
@@ -47,15 +47,15 @@ flowchart LR
 
 ### Đặc trưng kỹ thuật nhân quả
 
-Các đặc trưng return, trend, volatility, OHLC shape, volume và calendar tại thời điểm \(t\) chỉ dùng dữ liệu đến hết \(t\). Median imputation và feature selection được fit riêng trên train. Pipeline không dùng centered rolling window hoặc `bfill()` xuyên toàn chuỗi.
+Các đặc trưng return, trend, volatility, OHLC shape, volume và calendar tại thời điểm $t$ chỉ dùng dữ liệu đến hết $t$. Median imputation và feature selection được fit riêng trên train. Pipeline không dùng centered rolling window hoặc `bfill()` xuyên toàn chuỗi.
 
 ### Filtered HMM và căn chỉnh trạng thái
 
 Filtered HMM tính xác suất hiện tại bằng forward recursion:
 
-$$
+```math
 p(S_t=k \mid \mathcal{F}_t).
-$$
+```
 
 State thô được căn chỉnh bằng mean return, volatility, downside, xác suất lợi suất âm, tần suất và duration trên train. Các tên `Expansion`, `Range`, `Contraction` và `Turbulence` là diễn giải kinh tế tương đối, không phải cách đổi tên trực tiếp sang bốn nhãn dự báo.
 
@@ -63,16 +63,16 @@ State thô được căn chỉnh bằng mean return, volatility, downside, xác 
 
 EGARCH mô hình hóa log variance đệ quy và leverage effect:
 
-$$
+```math
 \log \sigma_t^2
 =
 \omega
 + \beta \log \sigma_{t-1}^2
 + \alpha (|z_{t-1}|-\mathbb{E}|z|)
 + \gamma z_{t-1}.
-$$
+```
 
-Cú sốc dùng Student-t với bậc tự do \(\nu\) ước lượng từ dữ liệu train. Cùng tham số này được chuyển sang Monte Carlo.
+Cú sốc dùng Student-t với bậc tự do $\nu$ ước lượng từ dữ liệu train. Cùng tham số này được chuyển sang Monte Carlo.
 
 ### EBM đa lớp theo từng chân trời
 
@@ -84,11 +84,11 @@ Temperature scaling chỉ được chọn trên validation và chỉ dùng khi g
 
 ### Purged walk-forward validation
 
-Với nhãn tại \(t\) có ngày kết thúc \(e_{t,h}\), train trước boundary \(b\) phải thỏa:
+Với nhãn tại $t$ có ngày kết thúc $e_{t,h}$, train trước boundary $b$ phải thỏa:
 
-$$
+```math
 e_{t,h} < b.
-$$
+```
 
 Tuning dùng expanding-window folds có purge trước final test. Evaluation model fit trên train, calibration trên validation và chấm một lần trên final test. Deployment model chỉ được refit sau khi khóa kiến trúc và tham số.
 
@@ -98,9 +98,9 @@ Moving-block bootstrap giữ một phần phụ thuộc chuỗi thời gian khi 
 
 ### Monte Carlo có điều kiện theo chế độ
 
-Mỗi state \(k\) có drift \(\mu_k\) và scale rủi ro riêng. State kế tiếp được lấy từ ma trận chuyển HMM; volatility cập nhật bằng EGARCH; innovation dùng Student-t với \(\nu\) đã fit. Xác suất EBM ở cuối horizon tái trọng số quỹ đạo:
+Mỗi state $k$ có drift $\mu_k$ và scale rủi ro riêng. State kế tiếp được lấy từ ma trận chuyển HMM; volatility cập nhật bằng EGARCH; innovation dùng Student-t với $\nu$ đã fit. Xác suất EBM ở cuối horizon tái trọng số quỹ đạo:
 
-$$
+```math
 w_m \propto
 \frac{p_{\mathrm{EBM},h}(S_h^{(m)})}
 {p_{\mathrm{MC},h}(S_h^{(m)})},
@@ -109,17 +109,17 @@ w_m \propto
 =
 \frac{(\sum_m w_m)^2}
 {\sum_m w_m^2}.
-$$
+```
 
 Clipping và tempering được dùng khi ESS quá thấp. Fan chart là phân phối kịch bản có điều kiện, không phải dự báo giá chắc chắn.
 
 ### Backtest ngoài mẫu
 
-Backtest chính chỉ dùng final test. Signal sau đóng cửa ngày \(t\) tạo position cho lợi suất ngày \(t+1\), có transaction cost và turnover. RAEMF-MC được so sánh trên cùng ngày với Buy-and-Hold, Cash, MACD deterministic, MACD probabilistic, XGBoost và Random Forest.
+Backtest chính chỉ dùng final test. Signal sau đóng cửa ngày $t$ tạo position cho lợi suất ngày $t+1$, có transaction cost và turnover. RAEMF-MC được so sánh trên cùng ngày với Buy-and-Hold, Cash, MACD deterministic, MACD probabilistic, XGBoost và Random Forest.
 
 ## Phòng ngừa leakage
 
-- Mọi feature tại \(t\) chỉ phụ thuộc dữ liệu đến \(t\).
+- Mọi feature tại $t$ chỉ phụ thuộc dữ liệu đến $t$.
 - `target_end_date_h` được purge trước validation và test boundary.
 - HMM, EGARCH, imputer và feature selector của evaluation chỉ fit trên train.
 - Hyperparameter tuning không nhìn final test.
@@ -140,7 +140,7 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-Python 3.10 trở lên được hỗ trợ. Không yêu cầu một môi trường Conda có tên cố định.
+Python 3.11 trở lên được hỗ trợ. Không yêu cầu một môi trường Conda có tên cố định.
 
 ## Lệnh thực thi
 

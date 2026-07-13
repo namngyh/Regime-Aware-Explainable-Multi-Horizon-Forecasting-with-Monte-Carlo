@@ -6,5 +6,5 @@ PyYAML
 xgboost
 hmmlearn
 arch
-interpret
+interpret-core
 pytest
