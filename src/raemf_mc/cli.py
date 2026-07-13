@@ -9,6 +9,7 @@ from pathlib import Path
 from raemf_mc.config import load_config
 from raemf_mc.data.validation import validate_data_file
 from raemf_mc.pipeline import run_pipeline
+from raemf_mc.reporting.current_monitor import generate_current_monitor
 from raemf_mc.reporting.plots import generate_all_plots
 from raemf_mc.reporting.report_builder import build_docs_and_readme, build_run_report
 
@@ -35,6 +36,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--data", required=True)
     p.add_argument("--config", required=True)
 
+    p = sub.add_parser("current-report")
+    p.add_argument("--data", default="VNINDEX_Daily.csv")
+    p.add_argument("--baseline-run", default="outputs/latest")
+    p.add_argument("--config", default="configs/laptop.yaml")
+    p.add_argument("--output-dir", default="outputs/current_monitor")
+    p.add_argument("--readme", default="README.md")
+
     p = sub.add_parser("reproduce")
     p.add_argument("--data", default="data.csv")
     p.add_argument("--config", default="configs/laptop.yaml")
@@ -55,6 +63,10 @@ def main(argv: list[str] | None = None) -> None:
         build_run_report(args.run_dir)
         build_docs_and_readme(args.run_dir)
         print(Path(args.run_dir) / "report.md")
+    elif args.cmd == "current-report":
+        config = load_config(args.config)
+        output_dir = generate_current_monitor(args.data, args.baseline_run, config, args.output_dir, args.readme)
+        print(output_dir / "report_for_nonspecialists.md")
     elif args.cmd == "plots":
         figures = generate_all_plots(args.run_dir, args.data)
         print(f"Generated {len(figures)} figures in {Path(args.run_dir) / 'figures'}")

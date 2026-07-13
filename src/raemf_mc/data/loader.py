@@ -173,7 +173,11 @@ def load_price_data(path: str | Path) -> tuple[pd.DataFrame, dict[str, object]]:
     df = df.dropna(subset=["date", "close"]).copy()
     df = df.sort_values("date")
     duplicate_count = int(df["date"].duplicated(keep=False).sum())
-    if duplicate_count:
+    exact_duplicate_count = int(df.duplicated(subset=CANONICAL_COLUMNS, keep="first").sum())
+    if exact_duplicate_count:
+        df = df.drop_duplicates(subset=CANONICAL_COLUMNS, keep="first")
+    conflicting_duplicate_count = int(df["date"].duplicated(keep=False).sum())
+    if conflicting_duplicate_count:
         df = (
             df.groupby("date", as_index=False)
             .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
@@ -183,6 +187,8 @@ def load_price_data(path: str | Path) -> tuple[pd.DataFrame, dict[str, object]]:
     meta = {
         "rows_loaded": int(len(df)),
         "duplicate_dates": duplicate_count,
+        "exact_duplicate_records_removed": exact_duplicate_count,
+        "conflicting_duplicate_records_aggregated": conflicting_duplicate_count,
         "malformed_rows": malformed_rows,
         "columns": list(df.columns),
         "start_date": df["date"].min().strftime("%Y-%m-%d") if len(df) else None,

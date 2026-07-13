@@ -53,3 +53,15 @@ def test_report_references_every_figure_and_comments_after_each_image():
         if line.startswith("!["):
             window = "\n".join(lines[index + 1 : index + 10])
             assert "**Nhận xét định lượng:**" in window, f"Missing figure interpretation after: {line}"
+
+
+def test_current_monitor_report_and_readme_images_are_valid():
+    report = ROOT / "outputs/current_monitor/report_for_nonspecialists.md"
+    if not report.exists():
+        return
+    _assert_markdown_structure(report)
+    content = report.read_text(encoding="utf-8")
+    images = _local_images(content)
+    assert len(images) == 4
+    for image in images:
+        assert (report.parent / image).exists(), f"Broken current-monitor report image: {image}"

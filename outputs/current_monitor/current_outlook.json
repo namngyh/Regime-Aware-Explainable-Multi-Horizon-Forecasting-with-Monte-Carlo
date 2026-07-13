@@ -1,0 +1,47 @@
+{
+  "as_of_date": "2026-07-13",
+  "last_close": 1800.54,
+  "scope": "Deployment refit with locked baseline hyperparameters and calibration",
+  "horizons": {
+    "20": {
+      "probabilities": {
+        "Bull": 0.2196155470267365,
+        "Sideway": 0.22646333286596543,
+        "Bear": 0.23900574228779506,
+        "Stress": 0.3149153778195031
+      },
+      "predicted_class": "Stress",
+      "confidence": "Uncertain",
+      "entropy": 1.3751977485719222,
+      "margin": 0.07590963553170801,
+      "market_filter": "Uncertain"
+    },
+    "40": {
+      "probabilities": {
+        "Bull": 0.23268158171569903,
+        "Sideway": 0.1907881088473813,
+        "Bear": 0.2249022170821956,
+        "Stress": 0.35162809235472414
+      },
+      "predicted_class": "Stress",
+      "confidence": "Uncertain",
+      "entropy": 1.358416729141655,
+      "margin": 0.11894651063902512,
+      "market_filter": "Uncertain"
+    },
+    "60": {
+      "probabilities": {
+        "Bull": 0.23661769310024158,
+        "Sideway": 0.2227732709275833,
+        "Bear": 0.18214848346452822,
+        "Stress": 0.35846055250764697
+      },
+      "predicted_class": "Stress",
+      "confidence": "Uncertain",
+      "entropy": 1.3535003508390073,
+      "margin": 0.12184285940740539,
+      "market_filter": "Uncertain"
+    }
+  },
+  "note": "Không phải lời khuyên đầu tư."
+}
