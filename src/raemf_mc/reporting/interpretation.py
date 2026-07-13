@@ -154,6 +154,8 @@ def figure_interpretation(run_dir: Path, filename: str) -> str:
         return state_interpretation(run_dir)
     if filename == "egarch_conditional_volatility.png":
         risk = _load(run_dir, "egarch_features.csv")
+        if risk.empty or "egarch_sigma" not in risk:
+            return "Không có artifact EGARCH để diễn giải."
         return f"Sigma EGARCH trung vị là {risk['egarch_sigma'].median():.3%} và cực đại {risk['egarch_sigma'].max():.3%}. Tham số được fit trên train cho evaluation; các đỉnh volatility là ước lượng mô hình, không phải volatility quan sát trực tiếp."
     if filename == "metric_theo_fold_walk_forward.png":
         folds = _load(run_dir, "walk_forward_metrics.csv")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import gamma, sqrt
+from math import sqrt
 
 import numpy as np
 import pandas as pd
@@ -20,13 +20,6 @@ class SimulationOutput:
     quantiles: pd.DataFrame
     summary: pd.DataFrame
     state_distribution: pd.DataFrame
-
-
-def _student_abs_expectation(nu: float) -> float:
-    """E|Z| for a variance-one Student-t innovation."""
-    nu = max(float(nu), 2.05)
-    raw = 2.0 * sqrt(nu) * gamma((nu + 1.0) / 2.0) / ((nu - 1.0) * sqrt(np.pi) * gamma(nu / 2.0))
-    return raw * sqrt((nu - 2.0) / nu)
 
 
 def _draw_next_states(rng: np.random.Generator, states: np.ndarray, transition: np.ndarray) -> np.ndarray:
@@ -78,7 +71,10 @@ def simulate_paths_detailed(
     fitted_nu = max(float(nu if nu is not None else params.get("nu", 8.0)), 2.05)
     log_variance = np.full(paths, np.log(max((sigma * 100.0) ** 2, 1e-10)))
     previous_z = np.zeros(paths, dtype=float)
-    expected_abs_z = _student_abs_expectation(fitted_nu)
+    # arch centers |z| by sqrt(2/pi) in the EGARCH recursion regardless of the
+    # innovation distribution; the fitted omega absorbs the Student-t offset,
+    # so the simulation must use the same constant to stay consistent.
+    expected_abs_z = sqrt(2.0 / np.pi)
     if state_volatility is None:
         state_scale = np.ones(n_states, dtype=float)
     else:

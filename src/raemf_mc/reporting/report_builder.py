@@ -178,7 +178,7 @@ def build_run_report(run_dir: str | Path) -> None:
         "",
         "## 13. Benchmark",
         "",
-        "Classifier-head benchmark cho EBM, XGBoost và Random Forest dùng cùng bộ đặc trưng mở rộng. Architecture benchmark tách technical-only khỏi technical + HMM/EGARCH. MACD deterministic chỉ dùng cho metric lớp/backtest; Brier và log loss dùng MACD probabilistic học mapping trên validation.",
+        "Classifier-head benchmark cho EBM, XGBoost và Random Forest dùng cùng bộ đặc trưng mở rộng. Architecture benchmark tách technical-only khỏi technical + HMM/EGARCH. Baseline quy tắc là MACD probabilistic: tín hiệu MACD được ánh xạ sang xác suất bốn lớp bằng bảng điều kiện học trên validation.",
         "",
         "## 14. Tuning",
         "",

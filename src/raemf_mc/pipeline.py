@@ -7,6 +7,7 @@ import os
 import platform
 import shutil
 import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -203,14 +204,11 @@ def _build_oos_backtest(
     dates: pd.Series,
     close: pd.Series,
     model_probabilities: dict[str, np.ndarray],
-    deterministic_macd: pd.Series,
     cost_bps: float,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     strategies: dict[str, np.ndarray] = {
         model: _probability_exposure(probability) for model, probability in model_probabilities.items()
     }
-    deterministic_map = {"Bull": 1.0, "Sideway": 0.50, "Bear": 0.15, "Stress": 0.0}
-    strategies["MACD deterministic"] = deterministic_macd.map(deterministic_map).to_numpy(dtype=float)
     strategies["Buy-and-Hold"] = np.ones(len(close), dtype=float)
     strategies["Cash"] = np.zeros(len(close), dtype=float)
     frames: list[pd.DataFrame] = []
@@ -266,7 +264,7 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
     started = time.time()
     seed = int(config.get("runtime", {}).get("seed", 42))
     np.random.seed(seed)
-    os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-raemf")
+    os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "matplotlib-raemf"))
     run_dir = _run_dir()
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "figures").mkdir(parents=True, exist_ok=True)
@@ -351,7 +349,6 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
     tuning_trial_rows: list[pd.DataFrame] = []
     walk_forward_rows: list[pd.DataFrame] = []
     calibration_rows: list[dict[str, object]] = []
-    deterministic_rows: list[dict[str, object]] = []
     macd_table_rows: list[pd.DataFrame] = []
     best_parameters: dict[str, object] = {}
     evaluation_metadata: dict[str, object] = {"scope": "train -> validation calibration -> final test", "horizons": {}}
@@ -362,7 +359,7 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
         "horizons": {},
         "note": "Không phải lời khuyên đầu tư.",
     }
-    backtest_inputs: tuple[pd.Series, pd.Series, dict[str, np.ndarray], pd.Series] | None = None
+    backtest_inputs: tuple[pd.Series, pd.Series, dict[str, np.ndarray]] | None = None
 
     for horizon in HORIZONS:
         valid = targeted[f"target_{horizon}"].notna()
@@ -485,11 +482,6 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
         prediction_rows.append(
             _prediction_frame(sub["date"].iloc[split.test], y_test, raw_raemf, "RAEMF-MC uncalibrated", horizon)
         )
-        deterministic_probability = np.eye(4)[[CLASS_ORDER.index(value) for value in macd_signal.iloc[split.test]]]
-        deterministic_metric, _, _ = evaluate_predictions(y_test, deterministic_probability, "MACD deterministic", horizon)
-        deterministic_rows.append(
-            {key: deterministic_metric[key] for key in ["model", "horizon", "n_obs", "accuracy", "balanced_accuracy", "macro_f1", "mcc", "recall_bear", "recall_stress"]}
-        )
 
         architecture_probabilities: dict[str, np.ndarray] = {}
         architecture_probabilities["technical features only"], _ = _fit_variant(
@@ -593,7 +585,6 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
                 sub["date"].iloc[split.test].reset_index(drop=True),
                 sub["close"].iloc[split.test].reset_index(drop=True),
                 {model: probabilities[model]["test"] for model in MAIN_MODELS},
-                macd_signal.iloc[split.test].reset_index(drop=True),
             )
 
     metrics = pd.DataFrame(metric_rows)
@@ -607,7 +598,6 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
     pd.concat(tuning_trial_rows, ignore_index=True).to_csv(run_dir / "tuning_trials.csv", index=False)
     pd.concat(walk_forward_rows, ignore_index=True).to_csv(run_dir / "walk_forward_metrics.csv", index=False)
     pd.DataFrame(calibration_rows).to_csv(run_dir / "calibration_comparison.csv", index=False)
-    pd.DataFrame(deterministic_rows).to_csv(run_dir / "macd_deterministic_metrics.csv", index=False)
     pd.concat(macd_table_rows, ignore_index=True).to_csv(run_dir / "macd_probability_mapping.csv", index=False)
     _write_json(run_dir / "best_parameters.json", best_parameters)
     _write_json(run_dir / "evaluation_model_metadata.json", evaluation_metadata)

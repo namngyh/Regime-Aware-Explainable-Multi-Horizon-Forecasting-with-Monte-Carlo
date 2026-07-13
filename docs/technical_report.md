@@ -71,7 +71,7 @@ Tuning dùng purged expanding-window folds nằm hoàn toàn trước final test
 
 ## 13. Benchmark
 
-Classifier-head benchmark cho EBM, XGBoost và Random Forest dùng cùng bộ đặc trưng mở rộng. Architecture benchmark tách technical-only khỏi technical + HMM/EGARCH. MACD deterministic chỉ dùng cho metric lớp/backtest; Brier và log loss dùng MACD probabilistic học mapping trên validation.
+Classifier-head benchmark cho EBM, XGBoost và Random Forest dùng cùng bộ đặc trưng mở rộng. Architecture benchmark tách technical-only khỏi technical + HMM/EGARCH. Baseline quy tắc là MACD probabilistic: tín hiệu MACD được ánh xạ sang xác suất bốn lớp bằng bảng điều kiện học trên validation.
 
 ## 14. Tuning
 
@@ -164,11 +164,10 @@ Global importance mô tả mức đóng góp term trên toàn bộ deployment fi
 | XGBoost (full features) | 0.1652 | 0.0307 | 0.0868 | 0.3535 | 0.4028 | 0.1556 | -0.1971 | 11.9342 | 0.0119 | 0.5549 | 0.4323 | 0.9992 | 1255 |
 | Random Forest (full features) | 0.1653 | 0.0307 | 0.0843 | 0.3641 | 0.4162 | 0.1612 | -0.1905 | 10.0690 | 0.0101 | 0.5549 | 0.4323 | 0.9992 | 1255 |
 | MACD probabilistic | 0.2099 | 0.0382 | 0.1168 | 0.3274 | 0.3752 | 0.1380 | -0.2770 | 7.8714 | 0.0079 | 0.5557 | 0.6021 | 0.9992 | 207 |
-| MACD deterministic | 0.4189 | 0.0702 | 0.1137 | 0.6176 | 0.6615 | 0.3234 | -0.2171 | 79.9500 | 0.0799 | 0.4928 | 0.5674 | 0.9045 | 207 |
 | Buy-and-Hold | 0.4153 | 0.0697 | 0.1969 | 0.3540 | 0.4072 | 0.1728 | -0.4034 | 1.0000 | 0.0010 | 0.5565 | 0.9992 | 0.9992 | 1 |
 | Cash | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0 |
 
-Trên cùng final-test OOS, Sharpe cao nhất thuộc MACD deterministic (0.618). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
+Trên cùng final-test OOS, Sharpe cao nhất thuộc RAEMF-MC (0.393). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
 
 ## 20. Rủi ro Monte Carlo
 
@@ -266,7 +265,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `backtest_drawdown_oos.png`.
 
-**Nhận xét định lượng:** Trên cùng final-test OOS, Sharpe cao nhất thuộc MACD deterministic (0.618). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
+**Nhận xét định lượng:** Trên cùng final-test OOS, Sharpe cao nhất thuộc RAEMF-MC (0.393). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
 
 ### Backtest equity oos
 
@@ -274,7 +273,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `backtest_equity_oos.png`.
 
-**Nhận xét định lượng:** Trên cùng final-test OOS, Sharpe cao nhất thuộc MACD deterministic (0.618). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
+**Nhận xét định lượng:** Trên cùng final-test OOS, Sharpe cao nhất thuộc RAEMF-MC (0.393). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
 
 ### Backtest exposure oos
 
@@ -282,7 +281,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `backtest_exposure_oos.png`.
 
-**Nhận xét định lượng:** Trên cùng final-test OOS, Sharpe cao nhất thuộc MACD deterministic (0.618). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
+**Nhận xét định lượng:** Trên cùng final-test OOS, Sharpe cao nhất thuộc RAEMF-MC (0.393). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
 
 ### Backtest rolling sharpe oos
 
@@ -290,7 +289,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `backtest_rolling_sharpe_oos.png`.
 
-**Nhận xét định lượng:** Trên cùng final-test OOS, Sharpe cao nhất thuộc MACD deterministic (0.618). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
+**Nhận xét định lượng:** Trên cùng final-test OOS, Sharpe cao nhất thuộc RAEMF-MC (0.393). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
 
 ### Backtest turnover oos
 
@@ -298,7 +297,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `backtest_turnover_oos.png`.
 
-**Nhận xét định lượng:** Trên cùng final-test OOS, Sharpe cao nhất thuộc MACD deterministic (0.618). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
+**Nhận xét định lượng:** Trên cùng final-test OOS, Sharpe cao nhất thuộc RAEMF-MC (0.393). RAEMF-MC có lợi suất tích lũy 17.6%, Sharpe 0.393, drawdown cực đại -19.0%, turnover 21.58 và chi phí 2.16%. Backtest là proxy trên VN-Index, chưa phản ánh tracking error, thanh khoản hay khả năng giao dịch chỉ số trực tiếp.
 
 ### Bootstrap forest brier
 

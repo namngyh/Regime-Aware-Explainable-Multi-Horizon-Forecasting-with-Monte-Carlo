@@ -9,7 +9,11 @@ from raemf_mc import CLASS_ORDER
 
 
 def macd_deterministic(close: pd.Series, volatility: pd.Series) -> pd.Series:
-    """Transparent non-probabilistic MACD state rule."""
+    """Transparent MACD state rule used as the signal source for the probabilistic mapping.
+
+    This rule is not reported as a standalone benchmark; it only feeds
+    `fit_macd_probability_table`/`apply_macd_probability_table`.
+    """
     ema12 = close.ewm(span=12, adjust=False, min_periods=12).mean()
     ema26 = close.ewm(span=26, adjust=False, min_periods=26).mean()
     macd = ema12 - ema26

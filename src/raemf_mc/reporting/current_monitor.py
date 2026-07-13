@@ -18,6 +18,7 @@ from raemf_mc.features.technical import build_features
 from raemf_mc.models.base import fill_features
 from raemf_mc.models.ebm_forecaster import EBMForecaster
 from raemf_mc.regime.filtered_hmm import fit_filtered_hmm
+from raemf_mc.reporting.plots import _THOUSANDS, _apply_style
 from raemf_mc.risk.egarch_t import fit_egarch_features
 from raemf_mc.simulation.structural_mc import simulate_paths_detailed
 from raemf_mc.targets.regime_targets import create_multihorizon_targets
@@ -301,13 +302,14 @@ def _plot_baseline_forecast(
     else:
         actual_through = baseline_outlook["as_of_date"]
     ax.axvline(0, color="#111827", linewidth=1.0)
+    ax.yaxis.set_major_formatter(_THOUSANDS)
+    ax.margins(x=0)
     ax.set(
         title=f"Dự báo RAEMF-MC {horizon} phiên từ {baseline_outlook['as_of_date']} và VN-Index thực tế đến {actual_through}",
         xlabel="Số phiên so với mốc phát hành dự báo",
         ylabel="Điểm VN-Index",
     )
     ax.legend(fontsize=8, ncol=2)
-    ax.grid(alpha=0.18)
     _save_figure(fig, output_path)
 
 
@@ -341,8 +343,9 @@ def _plot_current_outlook(
             bbox={"facecolor": "white", "alpha": 0.84, "edgecolor": "#CCCCCC"},
         )
         ax.axvline(0, color="#111827", linewidth=1.0)
+        ax.yaxis.set_major_formatter(_THOUSANDS)
+        ax.margins(x=0)
         ax.set(title=f"Outlook RAEMF-MC tại {outlook['as_of_date']}: {horizon} phiên", xlabel="Số phiên so với hiện tại", ylabel="Điểm VN-Index")
-        ax.grid(alpha=0.18)
     axes[0].legend(fontsize=8, ncol=3)
     _save_figure(fig, output_path)
 
@@ -419,12 +422,25 @@ def _plain_language_section(
         max(outlook["horizons"][str(horizon)]["probabilities"].values())
         for horizon in HORIZONS
     ]
+    top_classes = [str(outlook["horizons"][str(horizon)]["predicted_class"]) for horizon in HORIZONS]
+    confidences = {str(outlook["horizons"][str(horizon)]["confidence"]) for horizon in HORIZONS}
+    if len(set(top_classes)) == 1:
+        top_text = f"Tại cả ba horizon, `{top_classes[0]}` là lớp có xác suất cao nhất"
+    else:
+        pairs = ", ".join(f"{horizon} phiên: `{cls}`" for horizon, cls in zip(HORIZONS, top_classes, strict=True))
+        top_text = f"Lớp có xác suất cao nhất khác nhau giữa các horizon ({pairs})"
+    majority_note = "" if min(highest_probabilities) > 0.5 else ", chưa phải xác suất đa số"
+    confidence_note = (
+        f", và độ tin cậy đều là `{next(iter(confidences))}`"
+        if len(confidences) == 1
+        else ""
+    )
     median_returns = mc_summary.set_index("horizon")["q50"]
     disagreement_text = (
-        f"Tại cả ba horizon, `Stress` là lớp có xác suất cao nhất nhưng chỉ ở mức "
-        f"{min(highest_probabilities):.1%}-{max(highest_probabilities):.1%}, chưa phải xác suất đa số, và độ tin cậy đều là `Uncertain`. "
+        f"{top_text} nhưng chỉ ở mức "
+        f"{min(highest_probabilities):.1%}-{max(highest_probabilities):.1%}{majority_note}{confidence_note}. "
         f"Trong khi đó trung vị Monte Carlo tương ứng là {median_returns.loc[20]:+.1%}, {median_returns.loc[40]:+.1%} và {median_returns.loc[60]:+.1%}. "
-        "Bộ phân loại trạng thái và bộ mô phỏng đường giá là hai thành phần khác nhau; sự lệch này phải được đọc là dấu hiệu bất định cao, không phải dự báo chắc chắn rằng thị trường sẽ Stress hoặc sẽ tăng."
+        "Bộ phân loại trạng thái và bộ mô phỏng đường giá là hai thành phần khác nhau; mọi sự lệch giữa hai đầu ra phải được đọc là dấu hiệu bất định, không phải dự báo chắc chắn theo một hướng."
     )
     return "\n".join(
         [
@@ -498,6 +514,7 @@ def generate_current_monitor(
     readme_path: str | Path = "README.md",
 ) -> Path:
     """Generate live monitoring artifacts, current outlook, figures, and README section."""
+    _apply_style()
     data_path = Path(data_path)
     baseline_run = Path(baseline_run)
     output_dir = Path(output_dir)
