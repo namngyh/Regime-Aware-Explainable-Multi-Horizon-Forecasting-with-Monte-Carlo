@@ -9,9 +9,35 @@ from pathlib import Path
 import pandas as pd
 
 
+METRIC_NAMES_VI = {
+    "brier": "Brier score",
+    "log_loss": "log loss",
+    "ece": "ECE",
+    "macro_f1": "macro F1",
+    "balanced_accuracy": "balanced accuracy",
+    "mcc": "MCC",
+    "recall_bear": "recall Bear",
+    "recall_stress": "recall Stress",
+}
+
+
 def _load(run_dir: Path, name: str) -> pd.DataFrame:
     path = run_dir / name
     return pd.read_csv(path) if path.exists() else pd.DataFrame()
+
+
+def _macd_probability_caveat(metrics: pd.DataFrame) -> str:
+    """Explain why a low probability score for MACD probabilistic is not superiority."""
+    macd = metrics[metrics["model"] == "MACD probabilistic"]
+    if macd.empty or not {"recall_bear", "recall_stress"}.issubset(macd.columns):
+        return ""
+    if not bool(((macd["recall_bear"].fillna(0) == 0) & (macd["recall_stress"].fillna(0) == 0)).all()):
+        return ""
+    return (
+        " Lưu ý: MACD probabilistic đạt điểm xác suất thấp vì phát xác suất gần tần suất lớp học trên validation, "
+        "trong khi không nhận diện được quan sát Bear hay Stress nào (recall đều bằng 0); "
+        "điểm Brier/log loss thấp của baseline này không đồng nghĩa dự báo phân loại tốt hơn."
+    )
 
 
 def metric_interpretation(run_dir: Path, metric: str) -> str:
@@ -20,16 +46,48 @@ def metric_interpretation(run_dir: Path, metric: str) -> str:
         return "Chưa có đủ dữ liệu để diễn giải metric này."
     lower = metric in {"brier", "log_loss", "ece"}
     observations = []
+    best_models: list[str] = []
     for horizon, frame in metrics.groupby("horizon"):
         best = frame.loc[frame[metric].idxmin() if lower else frame[metric].idxmax()]
         raemf = frame[frame["model"] == "RAEMF-MC"].iloc[0]
         delta = float(raemf[metric] - best[metric])
+        best_models.append(str(best["model"]))
         observations.append(
             f"{int(horizon)} phiên: tốt nhất là {best['model']} ({best[metric]:.4f}); "
             f"RAEMF-MC đạt {raemf[metric]:.4f}, chênh {delta:+.4f}"
         )
     direction = "thấp hơn" if lower else "cao hơn"
-    return f"Metric này được đọc theo hướng {direction} là tốt hơn. " + "; ".join(observations) + ". So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian."
+    name = METRIC_NAMES_VI.get(metric, metric)
+    caveat = _macd_probability_caveat(metrics) if lower and "MACD probabilistic" in best_models else ""
+    return (
+        f"{name.capitalize()} được đọc theo hướng {direction} là tốt hơn. "
+        + "; ".join(observations)
+        + ". So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian."
+        + caveat
+    )
+
+
+def overall_metric_interpretation(run_dir: Path) -> str:
+    """Balanced summary across discrimination and probability quality for the main table."""
+    metrics = _load(run_dir, "metrics_by_model_horizon.csv")
+    if metrics.empty or not {"macro_f1", "brier"}.issubset(metrics.columns):
+        return "Chưa có đủ dữ liệu để diễn giải bảng kết quả."
+    observations = []
+    for horizon, frame in metrics.groupby("horizon"):
+        best_f1 = frame.loc[frame["macro_f1"].idxmax()]
+        best_brier = frame.loc[frame["brier"].idxmin()]
+        observations.append(
+            f"{int(horizon)} phiên: macro F1 cao nhất là {best_f1['model']} ({best_f1['macro_f1']:.4f}), "
+            f"Brier thấp nhất là {best_brier['model']} ({best_brier['brier']:.4f})"
+        )
+    return (
+        "Bảng gồm nhiều metric với hướng đọc khác nhau: macro F1, balanced accuracy, MCC và recall đọc theo hướng cao hơn là tốt hơn; "
+        "Brier, log loss và ECE đọc theo hướng thấp hơn là tốt hơn. "
+        + "; ".join(observations)
+        + "."
+        + _macd_probability_caveat(metrics)
+        + " So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian."
+    )
 
 
 def bootstrap_interpretation(run_dir: Path, metric: str) -> str:

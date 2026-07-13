@@ -15,6 +15,7 @@ from raemf_mc.reporting.interpretation import (
     latest_interpretation,
     metric_interpretation,
     monte_carlo_interpretation,
+    overall_metric_interpretation,
     state_interpretation,
 )
 from raemf_mc.reporting.tables import markdown_table
@@ -77,7 +78,7 @@ def _readme_results(run_dir: Path) -> str:
         "",
         markdown_table(display_metrics, max_rows=80),
         "",
-        f"**Nhận xét:** {metric_interpretation(run_dir, 'brier')}",
+        f"**Nhận xét:** {overall_metric_interpretation(run_dir)}",
         "",
         "### Dự báo triển khai mới nhất",
         "",
@@ -126,7 +127,7 @@ def build_run_report(run_dir: str | Path) -> None:
         "",
         "RAEMF-MC kết hợp đặc trưng kỹ thuật nhân quả, Filtered HMM, EGARCH Student-t và EBM đa lớp cho VN-Index ở ba chân trời 20, 40 và 60 phiên. Báo cáo phân biệt rõ evaluation model và deployment model; metric và backtest chính chỉ sử dụng final test ngoài mẫu.",
         "",
-        f"{metric_interpretation(run_dir, 'brier')}",
+        f"{overall_metric_interpretation(run_dir)}",
         "",
         "## 2. Câu hỏi nghiên cứu",
         "",

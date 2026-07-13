@@ -4,7 +4,7 @@
 
 RAEMF-MC kết hợp đặc trưng kỹ thuật nhân quả, Filtered HMM, EGARCH Student-t và EBM đa lớp cho VN-Index ở ba chân trời 20, 40 và 60 phiên. Báo cáo phân biệt rõ evaluation model và deployment model; metric và backtest chính chỉ sử dụng final test ngoài mẫu.
 
-Metric này được đọc theo hướng thấp hơn là tốt hơn. 20 phiên: tốt nhất là MACD probabilistic (0.7274); RAEMF-MC đạt 0.7287, chênh +0.0013; 40 phiên: tốt nhất là MACD probabilistic (0.7172); RAEMF-MC đạt 0.7261, chênh +0.0088; 60 phiên: tốt nhất là MACD probabilistic (0.7082); RAEMF-MC đạt 0.7303, chênh +0.0221. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
+Bảng gồm nhiều metric với hướng đọc khác nhau: macro F1, balanced accuracy, MCC và recall đọc theo hướng cao hơn là tốt hơn; Brier, log loss và ECE đọc theo hướng thấp hơn là tốt hơn. 20 phiên: macro F1 cao nhất là Random Forest (full features) (0.3514), Brier thấp nhất là MACD probabilistic (0.7274); 40 phiên: macro F1 cao nhất là RAEMF-MC (0.3006), Brier thấp nhất là MACD probabilistic (0.7172); 60 phiên: macro F1 cao nhất là RAEMF-MC (0.2797), Brier thấp nhất là MACD probabilistic (0.7082). Lưu ý: MACD probabilistic đạt điểm xác suất thấp vì phát xác suất gần tần suất lớp học trên validation, trong khi không nhận diện được quan sát Bear hay Stress nào (recall đều bằng 0); điểm Brier/log loss thấp của baseline này không đồng nghĩa dự báo phân loại tốt hơn. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
 
 ## 2. Câu hỏi nghiên cứu
 
@@ -146,7 +146,7 @@ Random search tối ưu composite loss trên các fold purged, không nhìn fina
 | Random Forest (full features) | 60 | 1248 | 0.2957 | 0.2195 | 0.2299 | 0.2195 | 0.2218 | 0.3023 | -0.0183 | 0.7416 | 1.3624 | 0.0181 | 0.2725 | 0.4179 | 0.0143 | 0.1732 |
 | MACD probabilistic | 60 | 1248 | 0.3734 | 0.2500 | 0.0933 | 0.2500 | 0.1359 | 0.2030 | 0.0000 | 0.7082 | 1.2861 | 0.0926 | 1.0000 | 0.0000 | 0.0000 | 0.0000 |
 
-Metric này được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là Random Forest (full features) (0.3514); RAEMF-MC đạt 0.3057, chênh -0.0457; 40 phiên: tốt nhất là RAEMF-MC (0.3006); RAEMF-MC đạt 0.3006, chênh +0.0000; 60 phiên: tốt nhất là RAEMF-MC (0.2797); RAEMF-MC đạt 0.2797, chênh +0.0000. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
+Macro f1 được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là Random Forest (full features) (0.3514); RAEMF-MC đạt 0.3057, chênh -0.0457; 40 phiên: tốt nhất là RAEMF-MC (0.3006); RAEMF-MC đạt 0.3006, chênh +0.0000; 60 phiên: tốt nhất là RAEMF-MC (0.2797); RAEMF-MC đạt 0.2797, chênh +0.0000. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
 
 ## 17. Calibration ngoài mẫu
 
@@ -665,7 +665,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `so_sanh_balanced_accuracy.png`.
 
-**Nhận xét định lượng:** Metric này được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là Random Forest (full features) (0.3639); RAEMF-MC đạt 0.3118, chênh -0.0521; 40 phiên: tốt nhất là RAEMF-MC (0.3058); RAEMF-MC đạt 0.3058, chênh +0.0000; 60 phiên: tốt nhất là RAEMF-MC (0.2815); RAEMF-MC đạt 0.2815, chênh +0.0000. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
+**Nhận xét định lượng:** Balanced accuracy được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là Random Forest (full features) (0.3639); RAEMF-MC đạt 0.3118, chênh -0.0521; 40 phiên: tốt nhất là RAEMF-MC (0.3058); RAEMF-MC đạt 0.3058, chênh +0.0000; 60 phiên: tốt nhất là RAEMF-MC (0.2815); RAEMF-MC đạt 0.2815, chênh +0.0000. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
 
 ### So sanh brier
 
@@ -673,7 +673,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `so_sanh_brier.png`.
 
-**Nhận xét định lượng:** Metric này được đọc theo hướng thấp hơn là tốt hơn. 20 phiên: tốt nhất là MACD probabilistic (0.7274); RAEMF-MC đạt 0.7287, chênh +0.0013; 40 phiên: tốt nhất là MACD probabilistic (0.7172); RAEMF-MC đạt 0.7261, chênh +0.0088; 60 phiên: tốt nhất là MACD probabilistic (0.7082); RAEMF-MC đạt 0.7303, chênh +0.0221. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
+**Nhận xét định lượng:** Brier score được đọc theo hướng thấp hơn là tốt hơn. 20 phiên: tốt nhất là MACD probabilistic (0.7274); RAEMF-MC đạt 0.7287, chênh +0.0013; 40 phiên: tốt nhất là MACD probabilistic (0.7172); RAEMF-MC đạt 0.7261, chênh +0.0088; 60 phiên: tốt nhất là MACD probabilistic (0.7082); RAEMF-MC đạt 0.7303, chênh +0.0221. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian. Lưu ý: MACD probabilistic đạt điểm xác suất thấp vì phát xác suất gần tần suất lớp học trên validation, trong khi không nhận diện được quan sát Bear hay Stress nào (recall đều bằng 0); điểm Brier/log loss thấp của baseline này không đồng nghĩa dự báo phân loại tốt hơn.
 
 ### So sanh ece
 
@@ -681,7 +681,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `so_sanh_ece.png`.
 
-**Nhận xét định lượng:** Metric này được đọc theo hướng thấp hơn là tốt hơn. 20 phiên: tốt nhất là MACD probabilistic (0.0657); RAEMF-MC đạt 0.0894, chênh +0.0237; 40 phiên: tốt nhất là XGBoost (full features) (0.0359); RAEMF-MC đạt 0.0950, chênh +0.0591; 60 phiên: tốt nhất là Random Forest (full features) (0.0181); RAEMF-MC đạt 0.0681, chênh +0.0500. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
+**Nhận xét định lượng:** Ece được đọc theo hướng thấp hơn là tốt hơn. 20 phiên: tốt nhất là MACD probabilistic (0.0657); RAEMF-MC đạt 0.0894, chênh +0.0237; 40 phiên: tốt nhất là XGBoost (full features) (0.0359); RAEMF-MC đạt 0.0950, chênh +0.0591; 60 phiên: tốt nhất là Random Forest (full features) (0.0181); RAEMF-MC đạt 0.0681, chênh +0.0500. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian. Lưu ý: MACD probabilistic đạt điểm xác suất thấp vì phát xác suất gần tần suất lớp học trên validation, trong khi không nhận diện được quan sát Bear hay Stress nào (recall đều bằng 0); điểm Brier/log loss thấp của baseline này không đồng nghĩa dự báo phân loại tốt hơn.
 
 ### So sanh log loss
 
@@ -689,7 +689,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `so_sanh_log_loss.png`.
 
-**Nhận xét định lượng:** Metric này được đọc theo hướng thấp hơn là tốt hơn. 20 phiên: tốt nhất là Random Forest (full features) (1.3434); RAEMF-MC đạt 1.3451, chênh +0.0017; 40 phiên: tốt nhất là MACD probabilistic (1.3280); RAEMF-MC đạt 1.3388, chênh +0.0108; 60 phiên: tốt nhất là MACD probabilistic (1.2861); RAEMF-MC đạt 1.3417, chênh +0.0556. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
+**Nhận xét định lượng:** Log loss được đọc theo hướng thấp hơn là tốt hơn. 20 phiên: tốt nhất là Random Forest (full features) (1.3434); RAEMF-MC đạt 1.3451, chênh +0.0017; 40 phiên: tốt nhất là MACD probabilistic (1.3280); RAEMF-MC đạt 1.3388, chênh +0.0108; 60 phiên: tốt nhất là MACD probabilistic (1.2861); RAEMF-MC đạt 1.3417, chênh +0.0556. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian. Lưu ý: MACD probabilistic đạt điểm xác suất thấp vì phát xác suất gần tần suất lớp học trên validation, trong khi không nhận diện được quan sát Bear hay Stress nào (recall đều bằng 0); điểm Brier/log loss thấp của baseline này không đồng nghĩa dự báo phân loại tốt hơn.
 
 ### So sanh macro f1
 
@@ -697,7 +697,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `so_sanh_macro_f1.png`.
 
-**Nhận xét định lượng:** Metric này được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là Random Forest (full features) (0.3514); RAEMF-MC đạt 0.3057, chênh -0.0457; 40 phiên: tốt nhất là RAEMF-MC (0.3006); RAEMF-MC đạt 0.3006, chênh +0.0000; 60 phiên: tốt nhất là RAEMF-MC (0.2797); RAEMF-MC đạt 0.2797, chênh +0.0000. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
+**Nhận xét định lượng:** Macro f1 được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là Random Forest (full features) (0.3514); RAEMF-MC đạt 0.3057, chênh -0.0457; 40 phiên: tốt nhất là RAEMF-MC (0.3006); RAEMF-MC đạt 0.3006, chênh +0.0000; 60 phiên: tốt nhất là RAEMF-MC (0.2797); RAEMF-MC đạt 0.2797, chênh +0.0000. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
 
 ### So sanh mcc
 
@@ -705,7 +705,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `so_sanh_mcc.png`.
 
-**Nhận xét định lượng:** Metric này được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là Random Forest (full features) (0.1876); RAEMF-MC đạt 0.1093, chênh -0.0782; 40 phiên: tốt nhất là RAEMF-MC (0.1237); RAEMF-MC đạt 0.1237, chênh +0.0000; 60 phiên: tốt nhất là RAEMF-MC (0.0557); RAEMF-MC đạt 0.0557, chênh +0.0000. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
+**Nhận xét định lượng:** Mcc được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là Random Forest (full features) (0.1876); RAEMF-MC đạt 0.1093, chênh -0.0782; 40 phiên: tốt nhất là RAEMF-MC (0.1237); RAEMF-MC đạt 0.1237, chênh +0.0000; 60 phiên: tốt nhất là RAEMF-MC (0.0557); RAEMF-MC đạt 0.0557, chênh +0.0000. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
 
 ### So sanh recall bear
 
@@ -713,7 +713,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `so_sanh_recall_bear.png`.
 
-**Nhận xét định lượng:** Metric này được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là XGBoost (full features) (0.1037); RAEMF-MC đạt 0.0667, chênh -0.0370; 40 phiên: tốt nhất là Random Forest (full features) (0.1053); RAEMF-MC đạt 0.0632, chênh -0.0421; 60 phiên: tốt nhất là RAEMF-MC (0.0286); RAEMF-MC đạt 0.0286, chênh +0.0000. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
+**Nhận xét định lượng:** Recall bear được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là XGBoost (full features) (0.1037); RAEMF-MC đạt 0.0667, chênh -0.0370; 40 phiên: tốt nhất là Random Forest (full features) (0.1053); RAEMF-MC đạt 0.0632, chênh -0.0421; 60 phiên: tốt nhất là RAEMF-MC (0.0286); RAEMF-MC đạt 0.0286, chênh +0.0000. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
 
 ### So sanh recall stress
 
@@ -721,7 +721,7 @@ Kết luận được giới hạn ở bằng chứng ngoài mẫu và bootstrap
 
 *Chú thích:* Hình được tạo từ dữ liệu và artifact của run hiện tại: `so_sanh_recall_stress.png`.
 
-**Nhận xét định lượng:** Metric này được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là XGBoost (full features) (0.3682); RAEMF-MC đạt 0.2338, chênh -0.1343; 40 phiên: tốt nhất là XGBoost (full features) (0.3067); RAEMF-MC đạt 0.1467, chênh -0.1600; 60 phiên: tốt nhất là XGBoost (full features) (0.3723); RAEMF-MC đạt 0.2035, chênh -0.1688. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
+**Nhận xét định lượng:** Recall stress được đọc theo hướng cao hơn là tốt hơn. 20 phiên: tốt nhất là XGBoost (full features) (0.3682); RAEMF-MC đạt 0.2338, chênh -0.1343; 40 phiên: tốt nhất là XGBoost (full features) (0.3067); RAEMF-MC đạt 0.1467, chênh -0.1600; 60 phiên: tốt nhất là XGBoost (full features) (0.3723); RAEMF-MC đạt 0.2035, chênh -0.1688. So sánh điểm không tự nó chứng minh ưu thế ổn định theo thời gian.
 
 ### Vnindex va phan chia du lieu
 
