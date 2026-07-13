@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raemf-mc"
+version = "0.1.0"
+description = "Regime-Aware Explainable Multi-Horizon Forecasting with Monte Carlo for VN-Index"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Nguyen Hoai Nam" }]
+dependencies = [
+  "numpy",
+  "pandas",
+  "scikit-learn",
+  "matplotlib",
+  "PyYAML",
+  "xgboost",
+  "hmmlearn",
+  "arch",
+  "interpret",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"

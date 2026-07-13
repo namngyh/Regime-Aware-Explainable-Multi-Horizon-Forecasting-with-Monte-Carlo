@@ -1,0 +1,50 @@
+runtime:
+  seed: 42
+  max_threads: 4
+  cache_features: true
+  fail_fast: false
+split:
+  train_fraction: 0.65
+  validation_fraction: 0.15
+  test_fraction: 0.20
+target:
+  bull_threshold: 0.5
+  bear_threshold: 0.5
+  stress_threshold: 1.5
+  volatility_window: 40
+features:
+  missing_threshold: 0.35
+  correlation_threshold: 0.98
+hmm:
+  n_states: 4
+  seeds: [11, 23, 42, 55, 73, 89, 144]
+risk:
+  egarch_p: 1
+  egarch_o: 1
+  egarch_q: 1
+models:
+  ebm:
+    max_bins: 192
+    interactions: 8
+    learning_rate: 0.02
+    max_rounds: 240
+  xgboost:
+    n_estimators: 300
+    max_depth: 3
+    learning_rate: 0.03
+  random_forest:
+    n_estimators: 400
+    max_depth: 8
+monte_carlo:
+  paths: 3000
+  chunk_size: 500
+bootstrap:
+  metric_replicates: 500
+  block_length: 20
+market_filter:
+  bull_threshold: 0.42
+  stress_threshold: 0.25
+  bear_threshold: 0.35
+  entropy_uncertain: 1.25
+backtest:
+  transaction_cost_bps: 10
