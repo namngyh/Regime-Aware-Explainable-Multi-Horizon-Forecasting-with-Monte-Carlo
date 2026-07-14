@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import os
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -149,10 +150,23 @@ def figures() -> JSONResponse:
         ("Theo dõi hiện tại", MONITOR_DIR / "figures"),
         ("Nghiên cứu (outputs/latest)", ROOT / "outputs" / "latest" / "figures"),
     ]:
-        if directory.is_dir():
-            files = sorted(p.name for p in directory.glob("*.png"))
-            rel = directory.relative_to(ROOT / "outputs").as_posix()
-            groups.append({"group": name, "files": [f"/files/{rel}/{f}" for f in files]})
+        if not directory.is_dir():
+            continue
+        rel = directory.relative_to(ROOT / "outputs").as_posix()
+        files = []
+        newest = 0.0
+        for path in sorted(directory.glob("*.png")):
+            mtime = path.stat().st_mtime
+            newest = max(newest, mtime)
+            # mtime làm cache-buster: ảnh vẽ lại là trình duyệt tải bản mới ngay.
+            files.append(f"/files/{rel}/{path.name}?v={int(mtime)}")
+        groups.append(
+            {
+                "group": name,
+                "files": files,
+                "updated": datetime.fromtimestamp(newest).strftime("%H:%M %d/%m/%Y") if files else None,
+            }
+        )
     return JSONResponse({"groups": groups})
 
 

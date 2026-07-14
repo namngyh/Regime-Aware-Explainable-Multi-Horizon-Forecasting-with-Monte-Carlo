@@ -132,7 +132,17 @@ def plot_class_distribution(targeted: pd.DataFrame, figures: Path) -> None:
 
 
 def plot_hmm_and_risk(df: pd.DataFrame, hmm: pd.DataFrame, risk: pd.DataFrame, figures: Path) -> None:
-    dates = pd.to_datetime(df["date"])
+    # Dữ liệu giá có thể mới hơn artifact HMM/EGARCH của run: căn theo ngày
+    # chung để các chuỗi luôn cùng độ dài và cùng phiên.
+    price = df[["date", "close"]].copy()
+    price["date"] = pd.to_datetime(price["date"])
+    hmm = hmm.copy()
+    hmm["date"] = pd.to_datetime(hmm["date"])
+    hmm = hmm.merge(price, on="date", how="inner")
+    risk = risk.copy()
+    risk["date"] = pd.to_datetime(risk["date"])
+    risk = risk.merge(price[["date"]], on="date", how="inner")
+    dates = hmm["date"]
     probability_columns = [column for column in hmm if column.startswith("hmm_prob_state_")]
     hard = hmm[probability_columns].to_numpy().argmax(axis=1)
     labels = hmm.get("hmm_state_label", pd.Series(probability_columns)).astype(str)
@@ -157,10 +167,10 @@ def plot_hmm_and_risk(df: pd.DataFrame, hmm: pd.DataFrame, risk: pd.DataFrame, f
     _save(fig, figures / "xac_suat_filtered_hmm.png")
 
     fig, ax = plt.subplots(figsize=(11, 4.8))
-    ax.plot(dates, df["close"], color="#9CA3AF", linewidth=0.7, zorder=1)
+    ax.plot(dates, hmm["close"], color="#9CA3AF", linewidth=0.7, zorder=1)
     for state in range(len(probability_columns)):
         mask = hard == state
-        ax.scatter(dates[mask], df.loc[mask, "close"], s=6, alpha=0.6, color=colors[state % len(colors)], label=state_names[state], zorder=2)
+        ax.scatter(dates[mask], hmm.loc[mask, "close"], s=6, alpha=0.6, color=colors[state % len(colors)], label=state_names[state], zorder=2)
     ax.yaxis.set_major_formatter(_THOUSANDS)
     ax.margins(x=0)
     ax.set(title="VN-Index và trạng thái HMM đã căn chỉnh", xlabel="Ngày", ylabel="Điểm VN-Index")
@@ -170,7 +180,7 @@ def plot_hmm_and_risk(df: pd.DataFrame, hmm: pd.DataFrame, risk: pd.DataFrame, f
     _save(fig, figures / "hmm_regime_overlay.png")
 
     fig, ax = plt.subplots(figsize=(11, 3.8))
-    ax.plot(dates, risk["egarch_sigma"], color="#D55E00", linewidth=0.9)
+    ax.plot(risk["date"], risk["egarch_sigma"], color="#D55E00", linewidth=0.9)
     ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0, decimals=1))
     ax.margins(x=0)
     ax.set(title="Biến động điều kiện EGARCH Student-t", xlabel="Ngày", ylabel="Sigma ngày")

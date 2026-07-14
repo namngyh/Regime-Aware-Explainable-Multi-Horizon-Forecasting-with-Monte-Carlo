@@ -111,6 +111,11 @@ def main(argv: list[str] | None = None) -> None:
         validate_data_file(args.data, "outputs/data_validation")
         config = load_config(args.config)
         output_dir = generate_current_monitor(args.data, args.baseline_run, config, args.output_dir, args.readme)
+        try:
+            figures = generate_all_plots(args.baseline_run, args.data)
+            print(f"Đã vẽ lại {len(figures)} hình nghiên cứu theo dữ liệu mới trong {Path(args.baseline_run) / 'figures'}")
+        except Exception as exc:  # noqa: BLE001 - báo cáo chính đã xong, hình nghiên cứu không được chặn kết quả
+            print(f"[CẢNH BÁO] Không vẽ lại được hình nghiên cứu: {exc}")
         print(output_dir / "report_for_nonspecialists.md")
 
 

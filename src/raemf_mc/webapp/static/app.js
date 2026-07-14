@@ -366,13 +366,14 @@ async function loadFigures() {
     box.replaceChildren();
     for (const group of groups) {
       const h = document.createElement("h3");
-      h.textContent = group.group;
+      h.textContent = group.updated ? `${group.group} · cập nhật ${group.updated}` : group.group;
       box.appendChild(h);
       for (const url of group.files) {
         const a = document.createElement("a");
         a.href = url; a.target = "_blank"; a.rel = "noopener";
         const img = document.createElement("img");
-        img.src = url; img.loading = "lazy"; img.alt = url.split("/").pop();
+        img.src = url; img.loading = "lazy";
+        img.alt = url.split("/").pop().split("?")[0];
         a.appendChild(img);
         box.appendChild(a);
       }
