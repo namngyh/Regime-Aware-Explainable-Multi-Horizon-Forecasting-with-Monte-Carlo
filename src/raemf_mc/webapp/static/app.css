@@ -164,14 +164,6 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
 .prob-fill { height: 100%; border-radius: 0 4px 4px 0; }
 .prob-val { font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-primary); }
 
-.report { font-size: 14.5px; }
-.report h1 { font-size: 20px; } .report h2 { font-size: 17px; } .report h3 { font-size: 15px; }
-.report table { border-collapse: collapse; margin: 10px 0; width: 100%; display: block; overflow-x: auto; }
-.report th, .report td { border: 1px solid var(--grid); padding: 5px 9px; font-size: 13px; text-align: left; }
-.report th { color: var(--text-secondary); background: var(--page); }
-.report blockquote { border-left: 3px solid var(--baseline); margin: 10px 0; padding: 2px 12px; color: var(--text-secondary); }
-.report img { max-width: 100%; border: 1px solid var(--border); border-radius: 8px; margin: 6px 0; background: #fff; }
-
 .figures { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .figures h3 { grid-column: 1 / -1; margin: 6px 0 0; font-size: 13.5px; color: var(--text-secondary); }
 .figures a { display: block; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; }

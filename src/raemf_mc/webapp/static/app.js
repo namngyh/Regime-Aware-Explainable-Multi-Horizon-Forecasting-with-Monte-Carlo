@@ -358,69 +358,6 @@ async function loadOutlook() {
   }
 }
 
-/* ---------- báo cáo markdown ---------- */
-function escapeHTML(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-function inlineMD(s) {
-  return s
-    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => {
-      const safe = (src.startsWith("figures/") ? `/files/current_monitor/${src}` : src).replace(/"/g, "%22");
-      return `<img src="${safe}" alt="${alt.replace(/"/g, "&quot;")}" loading="lazy">`;
-    })
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>");
-}
-function renderMarkdown(md) {
-  const lines = md.split(/\r?\n/);
-  let html = "";
-  let list = false, table = [];
-  const flushTable = () => {
-    if (!table.length) return;
-    const rows = table.map((r) => r.split("|").slice(1, -1).map((c) => c.trim()));
-    const sepIdx = rows.findIndex((r) => r.every((c) => /^:?-{3,}:?$/.test(c)));
-    let out = "<table>";
-    rows.forEach((cells, ri) => {
-      if (ri === sepIdx) return;
-      const tag = sepIdx === 1 && ri === 0 ? "th" : "td";
-      out += "<tr>" + cells.map((c) => `<${tag}>${inlineMD(c)}</${tag}>`).join("") + "</tr>";
-    });
-    html += out + "</table>";
-    table = [];
-  };
-  for (const raw of lines) {
-    const line = escapeHTML(raw);
-    if (/^\s*\|.*\|\s*$/.test(line)) { table.push(line); continue; }
-    flushTable();
-    const heading = line.match(/^(#{1,4})\s+(.*)$/);
-    if (list && !/^\s*[-*]\s+/.test(line)) { html += "</ul>"; list = false; }
-    if (heading) {
-      const level = heading[1].length;
-      html += `<h${level}>${inlineMD(heading[2])}</h${level}>`;
-    } else if (/^\s*[-*]\s+/.test(line)) {
-      if (!list) { html += "<ul>"; list = true; }
-      html += `<li>${inlineMD(line.replace(/^\s*[-*]\s+/, ""))}</li>`;
-    } else if (/^\s*&gt;\s?/.test(line)) {
-      html += `<blockquote>${inlineMD(line.replace(/^\s*&gt;\s?/, ""))}</blockquote>`;
-    } else if (line.trim() === "") {
-      html += "";
-    } else {
-      html += `<p>${inlineMD(line)}</p>`;
-    }
-  }
-  if (list) html += "</ul>";
-  flushTable();
-  return html;
-}
-async function loadReport() {
-  try {
-    const { markdown } = await getJSON("/api/report");
-    $("#report").innerHTML = renderMarkdown(markdown);
-  } catch (err) {
-    $("#report").textContent = `Chưa có báo cáo (${err.message})`;
-  }
-}
-
 /* ---------- hình pipeline ---------- */
 async function loadFigures() {
   const box = $("#figures");
@@ -504,7 +441,7 @@ async function refreshJobs() {
     if (running) $("#log-details").open = true;
   }
   if (lastJobState === "running" && job && job.state !== "running") {
-    await Promise.all([refreshStatus(), loadPrice(), loadOutlook(), loadMC(), loadReport(), loadFigures()]);
+    await Promise.all([refreshStatus(), loadPrice(), loadOutlook(), loadMC(), loadFigures()]);
   }
   lastJobState = job ? job.state : null;
   clearTimeout(jobPollTimer);
@@ -556,6 +493,5 @@ refreshJobs();
 loadPrice();
 loadOutlook();
 loadMC();
-loadReport();
 loadFigures();
 setInterval(refreshStatus, 15000);
