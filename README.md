@@ -143,6 +143,25 @@ python -m pip install -e .
 
 Python 3.11 trở lên được hỗ trợ. Không yêu cầu một môi trường Conda có tên cố định.
 
+## Vận hành hằng ngày
+
+Chi tiết trong [docs/operations.md](docs/operations.md). Tóm tắt:
+
+1. Xuất **toàn bộ lịch sử VN-Index** (nến ngày) từ DataPro thành file CSV vào thư mục `incoming/`.
+2. Chạy một trong hai cách:
+   - **Một click:** `run_daily.bat` — nạp dữ liệu, đối chiếu, backup, validate rồi chạy `current-report`.
+   - **Web UI local:** `start_ui.bat` — mở dashboard tại `http://127.0.0.1:8600` với nút *Cập nhật dữ liệu & chạy hôm nay*, nút *Retrain toàn bộ pipeline*, nhật ký chạy, biểu đồ giá, dự phóng Monte Carlo, xác suất trạng thái và báo cáo.
+3. Kết quả nằm ở `outputs/current_monitor/` (báo cáo, dự báo, quantiles Monte Carlo, hình).
+
+Tương đương dòng lệnh:
+
+```bash
+python -m raemf_mc.cli daily            # ingest incoming/ -> validate -> current-report
+python -m raemf_mc.cli ingest-data      # chỉ nạp và đối chiếu dữ liệu
+```
+
+File dữ liệu chính là `VNINDEX_Daily.csv`; mỗi lần thay thế đều có bản sao trong `backups/` và file đã xử lý được chuyển vào `incoming/processed/`.
+
 ## Lệnh thực thi
 
 Laptop mode:

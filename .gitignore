@@ -10,3 +10,7 @@ outputs/runs/*
 *.joblib
 *.pkl
 .DS_Store
+incoming/*
+!incoming/README.md
+backups/
+outputs/webapp_jobs/
