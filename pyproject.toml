@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "raemf-mc"
-version = "0.2.0"
-description = "Regime-Aware Explainable Multi-Horizon Forecasting with Monte Carlo for VN-Index"
+version = "0.3.0"
+description = "Regime-Aware Explainable Multi-Horizon Forecasting with Variational Bayes and Monte Carlo for VN-Index"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Nguyen Hoai Nam" }]
@@ -27,7 +27,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=9,<10", "ruff>=0.14,<0.15"]
 ui = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
-bayesian = ["pymc>=5.20,<6", "arviz>=0.20,<1"]
+# torch: GPU-first primary VB backend (install the CUDA build from pytorch.org
+# for GPU support). pymc/arviz: reference backend + NUTS validation.
+bayesian = ["torch>=2.4", "pymc>=5.20,<7", "arviz>=0.20,<2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
