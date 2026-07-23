@@ -8,10 +8,73 @@ from typing import Any
 import yaml
 
 
+DEFAULT_BAYESIAN_CONFIG: dict[str, Any] = {
+    "enabled": False,
+    "backend": "pymc",
+    "method": "fullrank_advi",
+    "advi_steps": 30_000,
+    "posterior_draws": 2_000,
+    "posterior_predictive_draws": 1_000,
+    "learning_rate": 0.01,
+    "convergence_window": 500,
+    "convergence_tolerance": 0.001,
+    "shared_nu": False,
+    "prior_mu_scale": 0.5,
+    "prior_log_scale_sd": 0.3,
+    "prior_nu_rate": 0.1,
+    "random_seed": 42,
+    "fallback_to_point_estimate": True,
+    "min_effective_observations": 20.0,
+}
+
+
+def bayesian_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return one validated Bayesian configuration with repository defaults."""
+    source = config or {}
+    overrides = source.get("bayesian", source)
+    merged = {**DEFAULT_BAYESIAN_CONFIG, **dict(overrides)}
+    if merged["backend"] != "pymc":
+        raise ValueError("bayesian.backend must be 'pymc'")
+    if merged["method"] not in {"fullrank_advi", "meanfield_advi"}:
+        raise ValueError("bayesian.method must be 'fullrank_advi' or 'meanfield_advi'")
+    positive = [
+        "advi_steps",
+        "posterior_draws",
+        "posterior_predictive_draws",
+        "learning_rate",
+        "convergence_window",
+        "convergence_tolerance",
+        "prior_mu_scale",
+        "prior_log_scale_sd",
+        "prior_nu_rate",
+        "min_effective_observations",
+    ]
+    for key in positive:
+        if float(merged[key]) <= 0:
+            raise ValueError(f"bayesian.{key} must be positive")
+    return merged
+
+
 def load_config(path: str | Path) -> dict[str, Any]:
     """Load a YAML configuration file."""
-    with Path(path).open("r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+    config_path = Path(path)
+    with config_path.open("r", encoding="utf-8") as fh:
+        loaded = yaml.safe_load(fh) or {}
+    parent = loaded.pop("extends", None)
+    if parent is None:
+        return loaded
+    base = load_config((config_path.parent / str(parent)).resolve())
+
+    def merge(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+        output = dict(left)
+        for key, value in right.items():
+            if isinstance(value, dict) and isinstance(output.get(key), dict):
+                output[key] = merge(output[key], value)
+            else:
+                output[key] = value
+        return output
+
+    return merge(base, loaded)
 
 
 def write_config_snapshot(config: dict[str, Any], path: str | Path) -> None:

@@ -27,6 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=9,<10", "ruff>=0.14,<0.15"]
 ui = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+bayesian = ["pymc>=5.20,<6", "arviz>=0.20,<1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

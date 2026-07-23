@@ -14,3 +14,11 @@ incoming/*
 !incoming/README.md
 backups/
 outputs/webapp_jobs/
+
+# Keep compact OOS summaries/figures in Git; retain restart checkpoints and
+# posterior binaries locally because they are large and reproducible.
+outputs/distribution_oos_laptop/origin_metrics.csv
+outputs/distribution_oos_laptop/horizon_*/fold_*/origin_metrics_seed_*.csv
+outputs/distribution_oos_laptop/horizon_*/fold_*/posterior/
+outputs/bayesian_smoke/*.npz
+outputs/bayesian_smoke/posterior.nc

@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import tracemalloc
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,7 @@ from raemf_mc import CLASS_ORDER, HORIZONS
 from raemf_mc.backtest.exposure import backtest_exposure
 from raemf_mc.backtest.metrics import backtest_metrics
 from raemf_mc.calibration.temperature_scaling import apply_temperature, fit_temperature
-from raemf_mc.config import write_config_snapshot
+from raemf_mc.config import bayesian_config, write_config_snapshot
 from raemf_mc.data.loader import load_price_data, sha256_file
 from raemf_mc.evaluation.classification import evaluate_predictions
 from raemf_mc.features.selection import select_features
@@ -269,6 +270,9 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "figures").mkdir(parents=True, exist_ok=True)
     warnings: list[str] = []
+    bayes_cfg = bayesian_config(config)
+    bayesian_model: Any | None = None
+    bayesian_fold_rows: list[dict[str, object]] = []
 
     prices, data_metadata = load_price_data(data_path)
     targeted = create_multihorizon_targets(
@@ -313,6 +317,99 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
     )
     deployment_risk = fit_egarch_features(returns, deployment_idx)
     deployment_features = pd.concat([technical, _numeric_hmm(deployment_hmm), deployment_risk.features], axis=1)
+
+    if bool(bayes_cfg["enabled"]):
+        from raemf_mc.bayesian.diagnostics import write_diagnostic_artifacts
+        from raemf_mc.bayesian.variational import VariationalScenarioModel
+
+        saved_posterior = bayes_cfg.get("use_saved_posterior")
+        bayesian_started = time.perf_counter()
+        tracemalloc.start()
+        try:
+            if saved_posterior:
+                bayesian_model = VariationalScenarioModel.load(saved_posterior)
+            else:
+                bayesian_model = VariationalScenarioModel(bayes_cfg)
+                deployment_probability_columns = [
+                    column for column in deployment_hmm.probabilities if column.startswith("hmm_prob_state_")
+                ]
+                deployment_dates = pd.DatetimeIndex(targeted["date"])
+                bayesian_model.fit(
+                    pd.Series(returns.to_numpy(dtype=float), index=deployment_dates),
+                    pd.DataFrame(
+                        deployment_hmm.probabilities[deployment_probability_columns].to_numpy(dtype=float),
+                        index=deployment_dates,
+                        columns=deployment_probability_columns,
+                    ),
+                    pd.Series(
+                        deployment_risk.features["egarch_sigma"].to_numpy(dtype=float),
+                        index=deployment_dates,
+                    ),
+                    deployment_idx,
+                    bayes_cfg,
+                )
+            expected_regimes = len(
+                [column for column in deployment_hmm.probabilities if column.startswith("hmm_prob_state_")]
+            )
+            posterior_regimes = bayesian_model.result.posterior_samples["mu"].shape[1]
+            if posterior_regimes != expected_regimes:
+                raise ValueError(
+                    f"Saved/fitted posterior has {posterior_regimes} regimes; current HMM has {expected_regimes}"
+                )
+            bayesian_model.save(run_dir / "bayesian")
+            if not saved_posterior:
+                write_diagnostic_artifacts(bayesian_model, run_dir / "bayesian")
+            _, peak_bytes = tracemalloc.get_traced_memory()
+            bayesian_fold_rows.append(
+                {
+                    "scope": "deployment",
+                    "train_start": str(bayesian_model.result.train_date_range[0]),
+                    "train_end": str(bayesian_model.result.train_date_range[1]),
+                    "validation_start": "",
+                    "validation_end": "",
+                    "test_start": "",
+                    "test_end": "",
+                    "fit_status": "loaded" if saved_posterior else "fitted",
+                    "elbo_final": float(bayesian_model.result.elbo_history[-1]),
+                    "posterior_uncertainty_mean": float(
+                        np.mean(
+                            np.concatenate(
+                                [value.ravel() for value in bayesian_model.result.posterior_standard_deviations.values()]
+                            )
+                        )
+                    ),
+                    "runtime_seconds": time.perf_counter() - bayesian_started,
+                    "peak_memory_bytes": int(peak_bytes),
+                    "effective_observations": ";".join(
+                        f"{value:.4f}" for value in bayesian_model.result.effective_observations
+                    ),
+                    "convergence_status": bayesian_model.result.convergence_status,
+                    "warning": "; ".join(bayesian_model.result.warnings),
+                }
+            )
+        except Exception as exc:
+            if tracemalloc.is_tracing():
+                _, peak_bytes = tracemalloc.get_traced_memory()
+            else:
+                peak_bytes = 0
+            message = f"Variational posterior deployment fit failed: {exc}"
+            bayesian_fold_rows.append(
+                {
+                    "scope": "deployment",
+                    "fit_status": "fallback_point_estimate",
+                    "runtime_seconds": time.perf_counter() - bayesian_started,
+                    "peak_memory_bytes": int(peak_bytes),
+                    "warning": message,
+                }
+            )
+            if bool(bayes_cfg["fallback_to_point_estimate"]):
+                warnings.append(message)
+                bayesian_model = None
+            else:
+                raise
+        finally:
+            if tracemalloc.is_tracing():
+                tracemalloc.stop()
 
     registry.to_frame().to_csv(run_dir / "feature_registry.csv", index=False)
     evaluation_hmm.state_mapping.to_csv(run_dir / "hmm_state_mapping.csv", index=False)
@@ -376,6 +473,81 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
         )
         assert_target_end_before_boundary(sub[f"target_end_date_{horizon}"], split.train, split.validation_start, f"train h={horizon}")
         assert_target_end_before_boundary(sub[f"target_end_date_{horizon}"], split.validation, split.test_start, f"validation h={horizon}")
+
+        if bool(bayes_cfg["enabled"]) and not bayes_cfg.get("use_saved_posterior"):
+            from raemf_mc.bayesian.variational import VariationalScenarioModel
+
+            fold_started = time.perf_counter()
+            tracemalloc.start()
+            fold_status = "fitted"
+            fold_warning = ""
+            fold_model: Any | None = None
+            try:
+                probability_columns = [column for column in hmm_sub if column.startswith("hmm_prob_state_")]
+                fold_dates = pd.DatetimeIndex(sub["date"])
+                fold_model = VariationalScenarioModel(bayes_cfg)
+                fold_model.fit(
+                    pd.Series(returns.loc[sub["index"]].to_numpy(dtype=float), index=fold_dates),
+                    pd.DataFrame(
+                        hmm_sub[probability_columns].to_numpy(dtype=float),
+                        index=fold_dates,
+                        columns=probability_columns,
+                    ),
+                    pd.Series(risk_sub["egarch_sigma"].to_numpy(dtype=float), index=fold_dates),
+                    split.train,
+                    bayes_cfg,
+                )
+                fold_model.save(run_dir / "bayesian" / "folds" / f"horizon_{horizon}")
+            except Exception as exc:
+                fold_status = "fallback_point_estimate"
+                fold_warning = str(exc)
+                if not bool(bayes_cfg["fallback_to_point_estimate"]):
+                    raise
+                warnings.append(f"Variational posterior h={horizon} fit failed: {exc}")
+            _, peak_bytes = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+            bayesian_fold_rows.append(
+                {
+                    "scope": f"outer_evaluation_h{horizon}",
+                    "horizon": horizon,
+                    "train_start": sub["date"].iloc[split.train[0]].strftime("%Y-%m-%d"),
+                    "train_end": sub["date"].iloc[split.train[-1]].strftime("%Y-%m-%d"),
+                    "validation_start": sub["date"].iloc[split.validation[0]].strftime("%Y-%m-%d"),
+                    "validation_end": sub["date"].iloc[split.validation[-1]].strftime("%Y-%m-%d"),
+                    "test_start": sub["date"].iloc[split.test[0]].strftime("%Y-%m-%d"),
+                    "test_end": sub["date"].iloc[split.test[-1]].strftime("%Y-%m-%d"),
+                    "fit_status": fold_status,
+                    "elbo_final": (
+                        float(fold_model.result.elbo_history[-1])
+                        if fold_model is not None and fold_model.result is not None
+                        else float("nan")
+                    ),
+                    "posterior_uncertainty_mean": (
+                        float(
+                            np.mean(
+                                np.concatenate(
+                                    [value.ravel() for value in fold_model.result.posterior_standard_deviations.values()]
+                                )
+                            )
+                        )
+                        if fold_model is not None and fold_model.result is not None
+                        else float("nan")
+                    ),
+                    "runtime_seconds": time.perf_counter() - fold_started,
+                    "peak_memory_bytes": int(peak_bytes),
+                    "effective_observations": (
+                        ";".join(f"{value:.4f}" for value in fold_model.result.effective_observations)
+                        if fold_model is not None and fold_model.result is not None
+                        else ""
+                    ),
+                    "convergence_status": (
+                        fold_model.result.convergence_status
+                        if fold_model is not None and fold_model.result is not None
+                        else "failed"
+                    ),
+                    "warning": fold_warning,
+                }
+            )
         target = sub[f"target_{horizon}"].astype(str)
         selected, removed = select_features(
             full_sub,
@@ -602,6 +774,8 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
     _write_json(run_dir / "best_parameters.json", best_parameters)
     _write_json(run_dir / "evaluation_model_metadata.json", evaluation_metadata)
     _write_json(run_dir / "deployment_model_metadata.json", deployment_metadata)
+    if bayesian_fold_rows:
+        pd.DataFrame(bayesian_fold_rows).to_csv(run_dir / "bayesian_fold_metadata.csv", index=False)
 
     bootstrap = bootstrap_prediction_differences(
         predictions[predictions["model"].isin(MAIN_MODELS)],
@@ -621,6 +795,7 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
     state_volatility = np.asarray(deployment_hmm.diagnostics["state_volatility"], dtype=float)
     monte_carlo_rows: list[pd.DataFrame] = []
     state_distribution_rows: list[pd.DataFrame] = []
+    monte_carlo_comparison_rows: list[pd.DataFrame] = []
     for horizon in HORIZONS:
         target_probability = np.array(
             [latest_outlook["horizons"][str(horizon)]["probabilities"][target_class] for target_class in CLASS_ORDER]
@@ -639,12 +814,64 @@ def run_pipeline(data_path: str | Path, config: dict[str, Any]) -> Path:
             nu=float(deployment_risk.diagnostics.get("nu", 8.0)),
             target_class_probabilities=target_probability,
             state_to_class=np.arange(len(state_probability)) % len(CLASS_ORDER),
+            scenario_mode="point_estimate",
         )
         simulation.quantiles.to_csv(run_dir / f"monte_carlo_quantiles_{horizon}.csv", index=False)
         monte_carlo_rows.append(simulation.summary)
+        monte_carlo_comparison_rows.append(simulation.summary)
         state_distribution_rows.append(simulation.state_distribution)
+        if bayesian_model is not None:
+            posterior_draws = bayesian_model.sample_parameters(
+                int(config["monte_carlo"]["paths"]),
+                seed + horizon,
+            )
+            for scenario_mode in ("posterior_mean_mc", "variational_posterior"):
+                scenario_parameters = (
+                    bayesian_model.result.posterior_samples
+                    if scenario_mode == "posterior_mean_mc"
+                    else posterior_draws
+                )
+                scenario = simulate_paths_detailed(
+                    float(targeted["close"].iloc[-1]),
+                    state_probability,
+                    transition,
+                    state_mean,
+                    float(deployment_risk.features["egarch_sigma"].iloc[-1]),
+                    horizon,
+                    int(config["monte_carlo"]["paths"]),
+                    seed,
+                    state_volatility=state_volatility,
+                    egarch_params=dict(deployment_risk.diagnostics.get("params", {})),
+                    nu=float(deployment_risk.diagnostics.get("nu", 8.0)),
+                    target_class_probabilities=target_probability,
+                    state_to_class=np.arange(len(state_probability)) % len(CLASS_ORDER),
+                    scenario_mode=scenario_mode,
+                    parameter_draws=scenario_parameters,
+                )
+                scenario.quantiles.to_csv(
+                    run_dir / f"monte_carlo_quantiles_{scenario_mode}_{horizon}.csv",
+                    index=False,
+                )
+                monte_carlo_comparison_rows.append(scenario.summary)
     pd.concat(monte_carlo_rows, ignore_index=True).to_csv(run_dir / "monte_carlo_summary.csv", index=False)
     pd.concat(state_distribution_rows, ignore_index=True).to_csv(run_dir / "monte_carlo_state_distribution.csv", index=False)
+    monte_carlo_comparison = pd.concat(monte_carlo_comparison_rows, ignore_index=True)
+    monte_carlo_comparison.to_csv(
+        run_dir / "monte_carlo_comparison_summary.csv",
+        index=False,
+    )
+    requested_scenario = str(config.get("monte_carlo", {}).get("scenario_mode", "point_estimate"))
+    selected_scenario = monte_carlo_comparison[
+        monte_carlo_comparison["scenario_mode"] == requested_scenario
+    ]
+    if selected_scenario.empty:
+        warnings.append(
+            f"Requested Monte Carlo scenario_mode={requested_scenario} unavailable; point_estimate selected"
+        )
+        selected_scenario = monte_carlo_comparison[
+            monte_carlo_comparison["scenario_mode"] == "point_estimate"
+        ]
+    selected_scenario.to_csv(run_dir / "monte_carlo_selected_summary.csv", index=False)
 
     if backtest_inputs is None:
         raise RuntimeError("Horizon 20 did not produce OOS backtest inputs")

@@ -469,3 +469,156 @@ Mọi kết luận đều phải đọc cùng bootstrap, class support, calibrat
 Thông tin trích dẫn máy đọc được nằm trong [CITATION.cff](CITATION.cff).
 
 Dự án được phát hành theo [MIT License](LICENSE). Copyright 2026 Nguyễn Hoài Nam.
+
+## Mở rộng tùy chọn RAEMF-VB-MC
+
+Repository hỗ trợ một **Variational Bayesian scenario layer** tùy chọn. Lớp
+này học approximate posterior cho drift `mu_k`, volatility multiplier `c_k` và
+Student-t degrees of freedom `nu_k`, có điều kiện trên filtered HMM
+probabilities và EGARCH conditional volatility. Filtered HMM, EGARCH recursion,
+EBM, probability calibration, explainability và backtest vẫn là các thành phần
+point estimate. Vì vậy RAEMF-VB-MC không phải fully Bayesian HMM-EGARCH.
+
+Variational Bayes không thay Monte Carlo. Monte Carlo vẫn sinh regime, return,
+price và drawdown path; khác biệt là mỗi path trong mode
+`variational_posterior` lấy một joint parameter draw từ variational posterior
+và giữ draw đó cố định trên toàn horizon.
+
+```mermaid
+flowchart LR
+    A[Filtered HMM] --> B[EGARCH Student-t]
+    B --> C[EBM đa horizon]
+    C --> D[Calibration]
+    D --> E[Variational Scenario Posterior]
+    E --> F[Posterior-Predictive Monte Carlo]
+    F --> G[Return / VaR / ES / Drawdown]
+```
+
+Ba chế độ mô phỏng có mục đích khác nhau:
+
+- `point_estimate`: RAEMF-MC original, dùng point estimates hiện tại.
+- `posterior_mean_mc`: dùng posterior mean cố định để tách tác dụng
+  regularization khỏi parameter uncertainty.
+- `variational_posterior`: lấy joint draw riêng cho từng path để truyền
+  parameter uncertainty vào phân phối tương lai.
+
+Ba cấu hình chạy tương ứng nằm tại
+`configs/comparison/original_mc.yaml`,
+`configs/comparison/posterior_mean_mc.yaml` và
+`configs/comparison/variational_posterior_mc.yaml`. Chúng kế thừa
+`configs/laptop.yaml` bằng khóa `extends`, nên các khác biệt thí nghiệm được
+giữ nhỏ và kiểm tra được.
+
+`fullrank_advi` là mặc định và có thể giữ tương quan posterior; đổi lại tốn
+runtime và memory hơn. `meanfield_advi` nhanh hơn nhưng giả định độc lập trong
+variational family và có nguy cơ đánh giá uncertainty quá thấp. Cả hai phải
+được đọc cùng posterior predictive checks; ELBO ổn định một mình chưa đủ.
+
+Cài backend tùy chọn:
+
+```bash
+python -m pip install -e ".[bayesian]"
+```
+
+Fit và lưu posterior:
+
+```bash
+python -m raemf_mc.cli fit-variational \
+  --data data.csv \
+  --config configs/laptop.yaml \
+  --output-dir outputs/bayesian
+```
+
+Chạy forecast/so sánh ba mode:
+
+```bash
+python -m raemf_mc.cli forecast-vb --data data.csv --config configs/laptop.yaml
+python -m raemf_mc.cli compare-vb --data data.csv --config configs/laptop.yaml
+```
+
+Tái sử dụng posterior mà không refit:
+
+```bash
+python -m raemf_mc.cli forecast-vb \
+  --data data.csv \
+  --config configs/laptop.yaml \
+  --use-saved-posterior outputs/bayesian
+```
+
+Artifact gồm `posterior.nc`, parameter samples nén, posterior summary,
+credible intervals, ELBO history, posterior correlations, prior/posterior
+predictive metrics, diagnostic plots, config snapshot và data fingerprint.
+`bayesian_fold_metadata.csv` ghi boundary, fit status, effective observations,
+runtime, peak memory và convergence theo evaluation scope.
+
+Để đọc calibration, so PIT với phân phối đều, interval coverage với nominal
+level, VaR exceedance với mức kỳ vọng, và đọc CRPS/log score cùng interval
+width. Coverage tốt hơn chỉ do interval rộng hơn không phải bằng chứng mô hình
+tốt hơn. Nếu block-bootstrap interval của chênh lệch metric chứa 0, chưa có
+bằng chứng ổn định về cải thiện.
+
+Benchmark phân phối OOS có checkpoint:
+
+```bash
+python -m raemf_mc.cli benchmark-distribution \
+  --data data.csv \
+  --config configs/benchmark_distribution_laptop.yaml \
+  --output-dir outputs/distribution_oos_laptop
+```
+
+Vẽ lại toàn bộ biểu đồ từ các artifact đã lưu mà không refit:
+
+```bash
+python -m raemf_mc.cli benchmark-plots \
+  --run-dir outputs/distribution_oos_laptop
+```
+
+### Kết quả OOS đã đo trên profile laptop
+
+Lần chạy hiện tại gồm ba expanding-window folds không chồng lấn, các horizon
+20/40/60, ba MC seeds và tổng cộng 5.634 horizon-origin OOS. Mỗi fold được
+purge riêng theo `target_end_date_h < boundary`; test không được dùng để tuning
+hoặc calibration.
+
+| Horizon | Point CRPS | Posterior-mean CRPS | VB CRPS | Point cov. 95% | VB cov. 95% |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 20 | 0.03489 | 0.03232 | 0.03203 | 99.22% | 94.36% |
+| 40 | 0.06944 | 0.04992 | 0.05083 | 99.61% | 97.16% |
+| 60 | 0.09240 | 0.05980 | 0.06195 | 99.98% | 97.15% |
+
+![Proper scores OOS](outputs/distribution_oos_laptop/figures/proper_scores_by_horizon.png)
+
+**Nhận xét định lượng:** VB giảm CRPS so với point MC khoảng 8,2%, 26,8% và
+33,0% ở h20/h40/h60. Tuy nhiên paired block bootstrap cho thấy VB không khác
+posterior mean ổn định tại h20 và có CRPS xấu hơn có ý nghĩa tại h40/h60.
+
+![Calibration khoảng dự báo OOS](outputs/distribution_oos_laptop/figures/interval_coverage_calibration.png)
+
+**Nhận xét định lượng:** Point MC over-cover mạnh khi horizon tăng. Coverage
+95% của VB là 94,36%, 97,16% và 97,15%, gần nominal 95% hơn point MC ở cả ba
+horizon nhưng vẫn còn over-cover tại h40/h60.
+
+![Paired moving-block bootstrap](outputs/distribution_oos_laptop/figures/bootstrap_metric_differences.png)
+
+**Nhận xét định lượng:** CI 95% của chênh lệch CRPS VB trừ point nằm hoàn toàn
+dưới 0 ở cả ba horizon. So với posterior mean, CI h20 chứa 0; CI h40/h60 nằm
+trên 0. Parameter-uncertainty propagation vì vậy không vượt Bayesian
+regularization một cách nhất quán.
+
+![Runtime benchmark OOS](outputs/distribution_oos_laptop/figures/runtime_profile.png)
+
+**Nhận xét định lượng:** Profile laptop chạy xong trong 4.040,5 giây, khoảng
+67,3 phút, với peak Python-traced memory khoảng 152 MiB. Cả chín posterior fits
+hoàn tất nhưng đều có status `not_converged` sau 800 bước ADVI; đây là giới hạn
+quan trọng khi diễn giải kết quả.
+
+Báo cáo gồm chín biểu đồ, VaR/PIT, drawdown, độ ổn định theo fold, phân loại
+trạng thái và toàn bộ giới hạn được ghi tại
+[benchmark phân phối OOS](docs/distribution_oos_benchmark.md).
+
+Chi tiết công thức và giới hạn nằm tại
+[phương pháp Variational Bayes](docs/variational_bayes_methodology.md), còn
+[audit kiến trúc trước nâng cấp](docs/variational_bayes_upgrade_audit.md) ghi
+rõ data flow và các điểm leakage cần kiểm soát.
+
+Đây là mô hình nghiên cứu, không phải khuyến nghị đầu tư.

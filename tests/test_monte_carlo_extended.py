@@ -55,3 +55,11 @@ def test_ebm_probability_reweighting_and_ess():
     assert states.loc[0, "weighted_probability"] > states.loc[0, "raw_probability"]
     assert np.isclose(simulation.summary.loc[0, "ess"], effective_sample_size(simulation.weights))
     assert simulation.summary.loc[0, "ess"] <= len(simulation.weights) + 1e-8
+
+
+def test_lightweight_mode_preserves_terminal_distribution():
+    regular = _simulate([0.5, 0.5])
+    lightweight = _simulate([0.5, 0.5], lightweight=True)
+    assert np.array_equal(regular.terminal_returns, lightweight.terminal_returns)
+    assert np.array_equal(regular.weights, lightweight.weights)
+    assert lightweight.quantiles.empty

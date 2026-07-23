@@ -65,3 +65,21 @@ def test_current_monitor_report_and_readme_images_are_valid():
     assert len(images) == 4
     for image in images:
         assert (report.parent / image).exists(), f"Broken current-monitor report image: {image}"
+
+
+def test_oos_distribution_report_references_generated_figures_and_comments():
+    path = ROOT / "docs" / "distribution_oos_benchmark.md"
+    content = path.read_text(encoding="utf-8")
+    _assert_markdown_structure(path)
+    images = _local_images(content)
+    actual = {
+        f"../outputs/distribution_oos_laptop/figures/{figure.name}"
+        for figure in (ROOT / "outputs" / "distribution_oos_laptop" / "figures").glob("*.png")
+    }
+    assert len(actual) == 9
+    assert set(images) == actual
+    lines = content.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("!["):
+            window = "\n".join(lines[index + 1 : index + 7])
+            assert "**Nhận xét định lượng:**" in window, f"Missing OOS figure interpretation after: {line}"
