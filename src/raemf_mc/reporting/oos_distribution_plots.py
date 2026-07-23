@@ -91,13 +91,31 @@ def _grouped_bars(
 
 
 def _plot_proper_scores(summary: pd.DataFrame, output: Path) -> Path:
-    fig, axes = plt.subplots(1, 2, figsize=(10.8, 4.1))
+    has_wis = "wis" in summary.columns
+    fig, axes = plt.subplots(1, 3 if has_wis else 2, figsize=(14.4 if has_wis else 10.8, 4.1))
     _grouped_bars(axes[0], summary, "crps")
     axes[0].set(title="CRPS theo horizon", xlabel="Horizon", ylabel="CRPS (thấp hơn tốt hơn)")
     _grouped_bars(axes[1], summary, "nlpd")
     axes[1].set(title="Negative log predictive density", xlabel="Horizon", ylabel="NLPD (thấp hơn tốt hơn)")
+    if has_wis:
+        _grouped_bars(axes[2], summary, "wis")
+        axes[2].set(title="Weighted interval score", xlabel="Horizon", ylabel="WIS (thấp hơn tốt hơn)")
     axes[0].legend(loc="upper left")
     return _save(fig, output, "proper_scores_by_horizon.png")
+
+
+def _plot_tail_brier(summary: pd.DataFrame, output: Path) -> Path | None:
+    columns = ["brier_negative_return", "brier_drawdown_5pct", "brier_drawdown_10pct", "brier_drawdown_15pct"]
+    if not all(column in summary.columns for column in columns):
+        return None
+    titles = ["Return < 0", "Drawdown > 5%", "Drawdown > 10%", "Drawdown > 15%"]
+    fig, axes = plt.subplots(1, 4, figsize=(16.8, 3.9), sharey=False)
+    for ax, column, title in zip(axes, columns, titles, strict=True):
+        _grouped_bars(ax, summary, column)
+        ax.set(title=f"Brier: {title}", xlabel="Horizon")
+    axes[0].set_ylabel("Brier score (thấp hơn tốt hơn)")
+    axes[0].legend(loc="upper left", fontsize=7)
+    return _save(fig, output, "tail_event_brier.png")
 
 
 def _plot_interval_calibration(summary: pd.DataFrame, output: Path) -> Path:
@@ -345,7 +363,7 @@ def generate_oos_distribution_plots(run_dir: str | Path) -> list[Path]:
     metadata = pd.read_csv(required["metadata"])
     runtime = json.loads(required["runtime"].read_text(encoding="utf-8"))
 
-    return [
+    figures = [
         _plot_proper_scores(summary, output),
         _plot_interval_calibration(summary, output),
         _plot_var_calibration(summary, output),
@@ -356,3 +374,7 @@ def generate_oos_distribution_plots(run_dir: str | Path) -> list[Path]:
         _plot_classification(classification, output),
         _plot_runtime(metadata, runtime, output),
     ]
+    tail_brier = _plot_tail_brier(summary, output)
+    if tail_brier is not None:
+        figures.append(tail_brier)
+    return figures
