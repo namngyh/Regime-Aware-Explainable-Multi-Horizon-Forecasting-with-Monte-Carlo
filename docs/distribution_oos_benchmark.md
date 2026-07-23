@@ -1,4 +1,13 @@
-# Benchmark phân phối OOS trên profile laptop
+# Benchmark phân phối OOS trên profile laptop (v0.2.0 — lịch sử)
+
+> **Lưu ý (2026-07-23):** tài liệu này mô tả run v0.2.0 với posterior PyMC
+> mean-field 800 bước **chưa hội tụ** (9/9 fold not_converged). Run chính
+> thức hiện tại là v0.3.0 (hierarchical prior, PyTorch full-rank ADVI
+> multi-seed, cả 9 fold hội tụ, dữ liệu đến 2026-07-13) tại
+> `outputs/distribution_oos_vb/report.md`. Khác biệt quan trọng: coverage
+> "đẹp" của VB trong run này là sản phẩm phụ của posterior khuếch tán chưa
+> hội tụ; run v0.3.0 cho kết quả trung thực hơn (proper scores tốt hơn
+> nhưng under-coverage). Giữ tài liệu này để đối chiếu lịch sử.
 
 Benchmark được chạy trên `data.csv` với dữ liệu từ 2000-07-28 đến 2026-07-01.
 Đây là đánh giá nghiên cứu, không phải khuyến nghị đầu tư.

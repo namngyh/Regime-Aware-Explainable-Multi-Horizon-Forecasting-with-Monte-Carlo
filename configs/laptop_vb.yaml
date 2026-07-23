@@ -53,7 +53,11 @@ bayesian_regime_head:
 monte_carlo:
   paths: 1500
   chunk_size: 300
-  scenario_mode: variational_posterior
+  # Pre-registered OOS rule (scripts/summarize_vb_results.py) on the
+  # 2026-07-23 benchmark chose point_estimate as the production default:
+  # variational_posterior improves CRPS/WIS significantly but under-covers
+  # at h20/h40. VB outputs remain research artifacts (see outputs/latest).
+  scenario_mode: point_estimate
 
 distribution_benchmark:
   n_folds: 3

@@ -244,10 +244,6 @@ def bootstrap_distribution_differences(
         (data["actual_max_drawdown"] >= data["mdd_q025"])
         & (data["actual_max_drawdown"] <= data["mdd_q975"])
     ).astype(float)
-    averaged = (
-        data.groupby(["horizon", "date", "fold", "scenario_mode"], as_index=False)
-        .mean(numeric_only=True)
-    )
     if "prob_negative_return" in data:
         data["brier_negative"] = (
             data["prob_negative_return"] - (data["actual_return"] < 0).astype(float)
@@ -258,6 +254,10 @@ def bootstrap_distribution_differences(
                 data[f"prob_drawdown_below_{threshold}pct"]
                 - (data["actual_max_drawdown"] <= -threshold / 100.0).astype(float)
             ) ** 2
+    averaged = (
+        data.groupby(["horizon", "date", "fold", "scenario_mode"], as_index=False)
+        .mean(numeric_only=True)
+    )
     additive = [
         column
         for column in (
