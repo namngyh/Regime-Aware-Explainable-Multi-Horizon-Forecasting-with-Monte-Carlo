@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from raemf_mc.bayesian.diagnostics import write_diagnostic_artifacts
-from raemf_mc.bayesian.variational import VariationalScenarioModel
+from raemf_mc.bayesian.model import create_scenario_model
 from raemf_mc.config import bayesian_config
 from raemf_mc.data.loader import load_price_data, sha256_file
 from raemf_mc.features.technical import build_features
@@ -54,7 +54,7 @@ def fit_variational_from_data(
     risk = fit_egarch_features(returns, train_index)
     probability_columns = [column for column in hmm.probabilities if column.startswith("hmm_prob_state_")]
     dates = pd.DatetimeIndex(prices["date"])
-    model = VariationalScenarioModel(cfg)
+    model = create_scenario_model(cfg)
     tracemalloc.start()
     started = time.perf_counter()
     model.fit(
