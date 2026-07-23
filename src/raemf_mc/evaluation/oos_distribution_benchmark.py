@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from raemf_mc import CLASS_ORDER, HORIZONS
+from raemf_mc.bayesian.model import create_scenario_model
 from raemf_mc.bayesian.variational import VariationalScenarioModel
 from raemf_mc.calibration.temperature_scaling import apply_temperature, fit_temperature
 from raemf_mc.config import bayesian_config, write_config_snapshot
@@ -119,6 +120,7 @@ def _weighted_distribution_row(
         "nlpd": -float(np.log(max(density, 1e-300))),
         "crps": _weighted_crps(observation, values, probability),
         "pit": float(probability[values <= observation].sum()),
+        "prob_negative_return": float(probability[values < 0].sum()),
     }
     quantiles = weighted_quantile(
         values,
@@ -131,17 +133,25 @@ def _weighted_distribution_row(
         strict=True,
     ):
         result[key] = float(value)
-    for level in (0.50, 0.80, 0.90, 0.95):
+    interval_levels = (0.50, 0.80, 0.90, 0.95)
+    wis_terms = 0.5 * abs(observation - result["q50"])
+    wis_weight_sum = 0.5
+    for level in interval_levels:
         alpha = 1.0 - level
         lower, upper = weighted_quantile(values, np.array([alpha / 2, 1 - alpha / 2]), probability)
         key = int(level * 100)
         result[f"coverage_{key}"] = float(lower <= observation <= upper)
         result[f"width_{key}"] = float(upper - lower)
-        result[f"interval_score_{key}"] = float(
+        interval_score = float(
             (upper - lower)
             + (2 / alpha) * (lower - observation) * (observation < lower)
             + (2 / alpha) * (observation - upper) * (observation > upper)
         )
+        result[f"interval_score_{key}"] = interval_score
+        wis_terms += (alpha / 2.0) * interval_score
+        wis_weight_sum += 1.0
+    # Weighted interval score (Bracher et al. 2021) over the configured levels.
+    result["wis"] = float(wis_terms / wis_weight_sum)
     for alpha, name in ((0.05, "95"), (0.01, "99")):
         cut = float(weighted_quantile(values, np.array([alpha]), probability)[0])
         mask = values <= cut
@@ -185,6 +195,21 @@ def _summarize_seed(group: pd.DataFrame) -> dict[str, float]:
             np.mean(np.abs(group["predicted_time_under_water"] - group["actual_time_under_water"]))
         ),
     }
+    summary["wis"] = float(group["wis"].mean())
+    negative = (group["actual_return"] < 0).to_numpy(dtype=float)
+    summary["brier_negative_return"] = float(
+        np.mean((group["prob_negative_return"].to_numpy(dtype=float) - negative) ** 2)
+    )
+    summary["realized_negative_rate"] = float(negative.mean())
+    for threshold in (5, 10, 15):
+        column = f"prob_drawdown_below_{threshold}pct"
+        if column in group:
+            event = (group["actual_max_drawdown"] <= -threshold / 100.0).to_numpy(dtype=float)
+            summary[f"brier_drawdown_{threshold}pct"] = float(
+                np.mean((group[column].to_numpy(dtype=float) - event) ** 2)
+            )
+            summary[f"realized_drawdown_{threshold}pct_rate"] = float(event.mean())
+            summary[f"forecast_drawdown_{threshold}pct_rate"] = float(group[column].mean())
     for level in (50, 80, 90, 95):
         for metric in ("coverage", "width", "interval_score"):
             summary[f"{metric}_{level}"] = float(group[f"{metric}_{level}"].mean())
@@ -223,7 +248,33 @@ def bootstrap_distribution_differences(
         data.groupby(["horizon", "date", "fold", "scenario_mode"], as_index=False)
         .mean(numeric_only=True)
     )
-    additive = ["crps", "nlpd", "interval_score_50", "interval_score_80", "interval_score_90", "interval_score_95"]
+    if "prob_negative_return" in data:
+        data["brier_negative"] = (
+            data["prob_negative_return"] - (data["actual_return"] < 0).astype(float)
+        ) ** 2
+    for threshold in (5, 10, 15):
+        if f"prob_drawdown_below_{threshold}pct" in data:
+            data[f"brier_drawdown_{threshold}"] = (
+                data[f"prob_drawdown_below_{threshold}pct"]
+                - (data["actual_max_drawdown"] <= -threshold / 100.0).astype(float)
+            ) ** 2
+    additive = [
+        column
+        for column in (
+            "crps",
+            "wis",
+            "nlpd",
+            "brier_negative",
+            "brier_drawdown_5",
+            "brier_drawdown_10",
+            "brier_drawdown_15",
+            "interval_score_50",
+            "interval_score_80",
+            "interval_score_90",
+            "interval_score_95",
+        )
+        if column in data
+    ]
     calibration = {
         "coverage_50_error": ("coverage_50", 0.50),
         "coverage_80_error": ("coverage_80", 0.80),
@@ -335,7 +386,7 @@ def _fit_fold_components(
     if use_calibration:
         test_probability = apply_temperature(test_probability, temperature)
     bayes_cfg = bayesian_config(config)
-    posterior = VariationalScenarioModel(bayes_cfg)
+    posterior = create_scenario_model(bayes_cfg)
     dates = pd.DatetimeIndex(sub["date"])
     posterior.fit(
         pd.Series(returns.loc[sub["index"]].to_numpy(dtype=float), index=dates),

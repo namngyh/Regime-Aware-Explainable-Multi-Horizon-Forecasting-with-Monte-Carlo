@@ -105,6 +105,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--run-dir", default="outputs/distribution_oos_laptop")
 
+    p = sub.add_parser(
+        "benchmark-regime-head",
+        help="So sánh OOS: EBM vs Bayesian regime head vs XGBoost vs RF vs MACD",
+    )
+    p.add_argument("--data", default="data.csv")
+    p.add_argument("--config", default="configs/laptop_vb.yaml")
+    p.add_argument("--output-dir", default="outputs/regime_head_benchmark")
+
+    p = sub.add_parser("merge-data", help="Hợp nhất data.csv và VNINDEX_Daily.csv thành chuỗi chuẩn")
+    p.add_argument("--primary", default="VNINDEX_Daily.csv")
+    p.add_argument("--secondary", default="data.csv")
+    p.add_argument("--output-dir", default="outputs/latest")
+
+    p = sub.add_parser("hardware-report", help="Kiểm tra GPU/CUDA và benchmark CPU-vs-GPU")
+    p.add_argument("--output-dir", default="outputs/latest")
+
     p = sub.add_parser("ingest-data", help="Nạp file DataPro mới nhất từ incoming/ vào lịch sử chính")
     p.add_argument("--data", default="VNINDEX_Daily.csv")
     p.add_argument("--incoming-dir", default="incoming")
@@ -217,6 +233,24 @@ def main(argv: list[str] | None = None) -> None:
 
         figures = generate_oos_distribution_plots(args.run_dir)
         print(f"Generated {len(figures)} figures in {Path(args.run_dir) / 'figures'}")
+    elif args.cmd == "benchmark-regime-head":
+        from raemf_mc.evaluation.regime_head_benchmark import run_regime_head_benchmark
+
+        config = load_config(args.config)
+        output = run_regime_head_benchmark(args.data, config, args.output_dir)
+        print(output)
+    elif args.cmd == "merge-data":
+        from raemf_mc.data.merge import merge_price_histories, write_merge_artifacts
+
+        result = merge_price_histories(args.primary, args.secondary)
+        destination = write_merge_artifacts(result, args.output_dir)
+        print(json.dumps({k: v for k, v in result.report.items() if not k.endswith("_meta")}, indent=2, ensure_ascii=False, default=str))
+        print(destination / "canonical_vnindex.csv")
+    elif args.cmd == "hardware-report":
+        from raemf_mc.runtime.hardware import write_hardware_artifacts
+
+        report = write_hardware_artifacts(args.output_dir)
+        print(json.dumps(report["torch"], indent=2, ensure_ascii=False))
     elif args.cmd == "ingest-data":
         try:
             _run_ingest(args)
