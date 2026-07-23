@@ -207,9 +207,17 @@ class VariationalScenarioModel:
         effective = train_prob.sum(axis=0)
         minimum = float(cfg["min_effective_observations"])
         small = np.flatnonzero(effective < minimum)
+        use_shared_nu = bool(cfg["shared_nu"])
         if len(small):
             detail = ", ".join(f"regime {i}={effective[i]:.2f}" for i in small)
-            raise ValueError(f"Too few effective observations (minimum {minimum:g}): {detail}")
+            if use_shared_nu:
+                warnings.append(f"Low effective observations under shared nu: {detail}")
+            else:
+                warnings.append(
+                    f"Too few effective observations for regime-specific nu (minimum {minimum:g}): "
+                    f"{detail}; falling back to shared nu"
+                )
+                use_shared_nu = True
         return_scale = float(np.std(train_ret, ddof=1))
         if not np.isfinite(return_scale) or return_scale <= 1e-12:
             raise ValueError("Training return scale is zero or non-finite")
@@ -222,11 +230,23 @@ class VariationalScenarioModel:
         n_regimes = train_prob.shape[1]
         labels = [str(column) for column in probabilities.columns]
         seed = int(cfg["random_seed"])
+        prior_details = dict(cfg.get("priors") or {})
+        hierarchical = bool(cfg.get("hierarchical", False))
         with pm.Model(coords={"regime": labels, "observation": np.arange(len(train_ret))}):
-            mu_std = pm.Normal("mu_std", mu=0.0, sigma=float(cfg["prior_mu_scale"]), dims="regime")
-            log_c = pm.Normal("log_c", mu=0.0, sigma=float(cfg["prior_log_scale_sd"]), dims="regime")
+            if hierarchical:
+                mu_global = pm.Normal("mu_global", mu=0.0, sigma=float(prior_details.get("mu_global_sd", 0.25)))
+                tau_mu = pm.HalfNormal("tau_mu", sigma=float(prior_details.get("mu_tau_sd", 0.25)))
+                mu_std = pm.Normal("mu_std", mu=mu_global, sigma=tau_mu, dims="regime")
+                log_c_global = pm.Normal(
+                    "log_c_global", mu=0.0, sigma=float(prior_details.get("log_c_global_sd", 0.25))
+                )
+                tau_c = pm.HalfNormal("tau_c", sigma=float(prior_details.get("log_c_tau_sd", 0.20)))
+                log_c = pm.Normal("log_c", mu=log_c_global, sigma=tau_c, dims="regime")
+            else:
+                mu_std = pm.Normal("mu_std", mu=0.0, sigma=float(cfg["prior_mu_scale"]), dims="regime")
+                log_c = pm.Normal("log_c", mu=0.0, sigma=float(cfg["prior_log_scale_sd"]), dims="regime")
             c = pm.Deterministic("c", pm.math.exp(log_c), dims="regime")
-            if bool(cfg["shared_nu"]):
+            if use_shared_nu:
                 nu_minus_two_shared = pm.Exponential("nu_minus_two_shared", lam=float(cfg["prior_nu_rate"]))
                 nu = pm.Deterministic(
                     "nu",

@@ -44,6 +44,45 @@ Default \(s_\mu=0.5\), \(s_c=0.3\), \(\lambda_\nu=0.1\) chỉ tồn tại tại
 `shared_nu: true` dùng một \(\nu\) chung khi effective observations theo regime
 không đủ nhận diện tail parameter riêng.
 
+## Hierarchical shrinkage prior (mặc định trong profile VB)
+
+Với `bayesian.hierarchical: true` (bật sẵn trong `configs/laptop_vb.yaml`
+và `configs/gpu_research.yaml`), prior độc lập được thay bằng partial
+pooling:
+
+```math
+\begin{aligned}
+\mu_{\text{global}} &\sim \mathcal N(0, s_{\text{global}}),\\
+\tau_\mu &\sim \operatorname{HalfNormal}(s_\tau),\\
+\widetilde\mu_k &\sim \mathcal N(\mu_{\text{global}}, \tau_\mu),\\
+\log c_{\text{global}} &\sim \mathcal N(0, s_{c,\text{global}}),\\
+\tau_c &\sim \operatorname{HalfNormal}(s_{c,\tau}),\\
+\log c_k &\sim \mathcal N(\log c_{\text{global}}, \tau_c),\\
+\nu &= 2 + \operatorname{Exponential}(\lambda_\nu) \quad (\text{shared}).
+\end{aligned}
+```
+
+Regime hiếm (Stress) được kéo về mức chung thay vì bị prior độc lập thả nổi.
+`min_effective_observations` (mặc định 80 trong profile VB): nếu một regime
+không đủ effective observations thì \(\nu\) riêng bị thay bằng \(\nu\) chung
+kèm cảnh báo — không raise, không giả vờ posterior regime-specific đáng tin.
+
+## Backend GPU-first và multi-seed
+
+Backend chính là `pytorch_cuda` (`bayesian/torch_backend.py`): full-rank
+ADVI với reparameterization \(\theta = \mu + L\varepsilon\), Adam + warm-up
++ cosine schedule, gradient clipping, early stopping theo moving-average
+ELBO, retry ở learning rate thấp hơn, fallback mean-field rồi point
+estimate (ghi ở `fallbacks.json`). PyMC được giữ làm backend tham chiếu và
+để chạy NUTS kiểm chứng (`scripts/validate_advi_with_nuts.py`,
+`docs/bayesian_validation.md`).
+
+ADVI chạy nhiều seed (laptop 3, research 7); posterior dùng cho Monte Carlo
+là mixture đều của các seed posterior; per-seed summary tại
+`posterior_by_seed.csv`, khoảng cách giữa seed tại `seed_stability.json`.
+Student-t log likelihood, KL, log-sum-exp và tail quantile luôn ở float32
+trở lên; không dùng float16 cho phần Bayesian.
+
 Sau inference, \(\mu_k=\widetilde\mu_k s_r\), với \(s_r\) là train return scale.
 Hệ số \(c_k\) và \(\nu_k\) không đổi đơn vị.
 

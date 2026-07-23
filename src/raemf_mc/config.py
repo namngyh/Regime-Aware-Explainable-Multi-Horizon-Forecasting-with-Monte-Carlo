@@ -25,7 +25,22 @@ DEFAULT_BAYESIAN_CONFIG: dict[str, Any] = {
     "random_seed": 42,
     "fallback_to_point_estimate": True,
     "min_effective_observations": 20.0,
+    # GPU-first / multi-seed extensions (pytorch_cuda backend)
+    "seeds": None,  # list of ADVI seeds; None -> [random_seed]
+    "hierarchical": False,
+    "priors": {},
+    "device": "auto",  # auto | cuda | cpu
+    "require_gpu": False,
+    "dtype": "float32",
+    "min_steps": 1_000,
+    "vi_samples_per_step": 8,
+    "retry_learning_rates": [0.001],
+    "gradient_clip_norm": 5.0,
+    "early_stopping_patience": 2_000,
+    "fallback_to_meanfield": True,
 }
+
+VALID_BAYESIAN_BACKENDS = {"pymc", "pytorch_cuda"}
 
 
 def bayesian_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -33,8 +48,13 @@ def bayesian_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
     source = config or {}
     overrides = source.get("bayesian", source)
     merged = {**DEFAULT_BAYESIAN_CONFIG, **dict(overrides)}
-    if merged["backend"] != "pymc":
-        raise ValueError("bayesian.backend must be 'pymc'")
+    if merged["backend"] not in VALID_BAYESIAN_BACKENDS:
+        raise ValueError(f"bayesian.backend must be one of {sorted(VALID_BAYESIAN_BACKENDS)}")
+    if merged["seeds"] is not None:
+        seeds = [int(value) for value in merged["seeds"]]
+        if not seeds:
+            raise ValueError("bayesian.seeds must be a non-empty list when provided")
+        merged["seeds"] = seeds
     if merged["method"] not in {"fullrank_advi", "meanfield_advi"}:
         raise ValueError("bayesian.method must be 'fullrank_advi' or 'meanfield_advi'")
     positive = [

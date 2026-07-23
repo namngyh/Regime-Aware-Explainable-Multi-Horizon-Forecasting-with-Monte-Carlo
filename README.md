@@ -141,7 +141,23 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-Python 3.11 trở lên được hỗ trợ. Không yêu cầu một môi trường Conda có tên cố định.
+Python 3.11 trở lên được hỗ trợ (kết quả v0.3.0 được tạo trên Python 3.12).
+Không yêu cầu một môi trường Conda có tên cố định.
+
+Bayesian mode (RAEMF-VB-MC) cần thêm dependencies:
+
+```bash
+python -m pip install -e ".[bayesian]"      # torch + pymc + arviz
+python -m pip install -e ".[dev,bayesian]"  # kèm pytest/ruff
+```
+
+- **PyTorch** là backend chính; để dùng GPU hãy cài wheel CUDA từ
+  [pytorch.org](https://pytorch.org) khớp với driver (kết quả v0.3.0: torch
+  2.5.1 + CUDA 12.1 trên RTX 4060). Không có GPU vẫn chạy được trên CPU
+  với `bayesian.device: auto`.
+- **PyMC ≥ 5.20 + ArviZ** chỉ cần cho backend tham chiếu và NUTS
+  validation; pipeline production không import PyMC.
+- Snapshot môi trường đầy đủ: `requirements-lock.txt`.
 
 ## Vận hành hằng ngày
 
@@ -479,6 +495,24 @@ probabilities và EGARCH conditional volatility. Filtered HMM, EGARCH recursion,
 EBM, probability calibration, explainability và backtest vẫn là các thành phần
 point estimate. Vì vậy RAEMF-VB-MC không phải fully Bayesian HMM-EGARCH.
 
+Từ v0.3.0, tầng Bayesian là **GPU-first** với hai backend cùng một mô hình:
+
+- `pytorch_cuda` (mặc định trong profile VB): full-rank ADVI tự cài đặt
+  (reparameterization θ = μ + Lε), **hierarchical shrinkage prior**
+  (μ_global/τ_μ, log c_global/τ_c, shared ν = 2 + Exponential), multi-seed
+  (laptop 3, research 7), warm-up + cosine schedule, gradient clipping,
+  early stopping, retry learning-rate thấp hơn, fallback mean-field →
+  point estimate với mọi fallback ghi tại `fallbacks.json`;
+- `pymc`: backend tham chiếu, dùng để đối chiếu ADVI và chạy NUTS trên bài
+  toán kiểm chứng nhỏ (`scripts/validate_advi_with_nuts.py`). Kết quả:
+  torch ADVI ≈ PyMC ADVI ≈ NUTS (posterior sd ratio 0,95–1,03 — không phát
+  hiện underdispersion; xem `outputs/latest/advi_nuts_validation/` và
+  [docs/bayesian_validation.md](docs/bayesian_validation.md)).
+
+HMM/EGARCH/EBM cố ý ở lại CPU: benchmark cho thấy GPU chỉ có lợi cho tensor
+workload (ADVI, posterior sampling, Bayesian regime head); xem
+`outputs/latest/hardware_report.json` và `gpu_benchmark.json`.
+
 Variational Bayes không thay Monte Carlo. Monte Carlo vẫn sinh regime, return,
 price và drawdown path; khác biệt là mỗi path trong mode
 `variational_posterior` lấy một joint parameter draw từ variational posterior
@@ -557,13 +591,27 @@ width. Coverage tốt hơn chỉ do interval rộng hơn không phải bằng ch
 tốt hơn. Nếu block-bootstrap interval của chênh lệch metric chứa 0, chưa có
 bằng chứng ổn định về cải thiện.
 
+Pipeline RAEMF-VB-MC đầy đủ (merge dữ liệu → hardware report → benchmark
+phân phối M0/M1/M2 → benchmark regime head → dự báo live):
+
+```bash
+bash scripts/run_laptop_vb.sh          # tự chọn CUDA nếu có, CPU nếu không
+bash scripts/run_gpu_research.sh       # bắt buộc CUDA, 7 ADVI seeds, nặng hơn
+```
+
+Cấu hình tương ứng: `configs/laptop_vb.yaml` và `configs/gpu_research.yaml`
+(kế thừa `laptop.yaml`; bật `bayesian.enabled`, backend `pytorch_cuda`,
+hierarchical prior, `shared_nu: true`, `min_effective_observations: 80`).
+Nếu cấu hình yêu cầu GPU mà CUDA không khả dụng, pipeline dừng với thông
+báo rõ ràng — không âm thầm chạy CPU.
+
 Benchmark phân phối OOS có checkpoint:
 
 ```bash
 python -m raemf_mc.cli benchmark-distribution \
-  --data data.csv \
-  --config configs/benchmark_distribution_laptop.yaml \
-  --output-dir outputs/distribution_oos_laptop
+  --data outputs/latest/canonical_vnindex.csv \
+  --config configs/laptop_vb.yaml \
+  --output-dir outputs/distribution_oos_vb
 ```
 
 Vẽ lại toàn bộ biểu đồ từ các artifact đã lưu mà không refit:
@@ -573,48 +621,85 @@ python -m raemf_mc.cli benchmark-plots \
   --run-dir outputs/distribution_oos_laptop
 ```
 
-### Kết quả OOS đã đo trên profile laptop
+### Kết quả OOS v0.3.0 (hierarchical prior, multi-seed, dữ liệu đến 2026-07-13)
 
-Lần chạy hiện tại gồm ba expanding-window folds không chồng lấn, các horizon
-20/40/60, ba MC seeds và tổng cộng 5.634 horizon-origin OOS. Mỗi fold được
-purge riêng theo `target_end_date_h < boundary`; test không được dùng để tuning
-hoặc calibration.
+Ba expanding-window folds purged, horizon 20/40/60, ba MC seed, **5.640
+forecast origin duy nhất (50.760 dòng metric)** trên chuỗi dữ liệu hợp nhất.
+**Cả 9 posterior fit đều hội tụ** (3 ADVI seed/fold trên CUDA, không có
+fallback) — khắc phục hạn chế run cũ (9/9 not_converged).
 
-| Horizon | Point CRPS | Posterior-mean CRPS | VB CRPS | Point cov. 95% | VB cov. 95% |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 20 | 0.03489 | 0.03232 | 0.03203 | 99.22% | 94.36% |
-| 40 | 0.06944 | 0.04992 | 0.05083 | 99.61% | 97.16% |
-| 60 | 0.09240 | 0.05980 | 0.06195 | 99.98% | 97.15% |
+| Horizon | Mode | CRPS | WIS | Cov. 90% | Cov. 95% | VaR95 viol. |
+| ---: | :-- | ---: | ---: | ---: | ---: | ---: |
+| 20 | point_estimate | 0.0362 | 0.0297 | 96.4% | 98.9% | 2.0% |
+| 20 | variational | **0.0335** | **0.0239** | 79.1% | 86.2% | 11.4% |
+| 40 | point_estimate | 0.0605 | 0.0568 | 99.0% | 99.9% | 0.3% |
+| 40 | variational | **0.0476** | **0.0347** | 80.7% | 87.1% | 12.3% |
+| 60 | point_estimate | 0.0784 | 0.0796 | 98.7% | 99.5% | 0.1% |
+| 60 | variational | **0.0537** | **0.0390** | 81.7% | 87.1% | 11.3% |
 
-![Proper scores OOS](outputs/distribution_oos_laptop/figures/proper_scores_by_horizon.png)
+![Proper scores OOS](outputs/distribution_oos_vb/figures/proper_scores_by_horizon.png)
 
-**Nhận xét định lượng:** VB giảm CRPS so với point MC khoảng 8,2%, 26,8% và
-33,0% ở h20/h40/h60. Tuy nhiên paired block bootstrap cho thấy VB không khác
-posterior mean ổn định tại h20 và có CRPS xấu hơn có ý nghĩa tại h40/h60.
+**Nhận xét định lượng:** variational posterior giảm CRPS 7,5%/21,3%/31,5% và
+WIS 19,7%/39,0%/51,0% so với point estimate; paired moving-block bootstrap
+loại 0 ở cả ba horizon cho cả hai metric. Posterior mean (M1) gần như trùng
+variational (M2): với >3.700 quan sát train, parameter uncertainty đóng góp
+nhỏ; phần lớn cải thiện đến từ Bayesian regularization.
 
-![Calibration khoảng dự báo OOS](outputs/distribution_oos_laptop/figures/interval_coverage_calibration.png)
+![Calibration khoảng dự báo OOS](outputs/distribution_oos_vb/figures/interval_coverage_calibration.png)
 
-**Nhận xét định lượng:** Point MC over-cover mạnh khi horizon tăng. Coverage
-95% của VB là 94,36%, 97,16% và 97,15%, gần nominal 95% hơn point MC ở cả ba
-horizon nhưng vẫn còn over-cover tại h40/h60.
+**Nhận xét định lượng:** không mode nào calibrated tốt — point estimate
+over-cover (96–99,9%, VaR95 violation 0,1–2%), variational under-cover
+(79–87%, VaR95 violation ~11%). Lưu ý quan trọng: coverage "đẹp" của VB
+trong run cũ là sản phẩm phụ của posterior chưa hội tụ; khi posterior hội tụ
+thật, kết quả trung thực hơn nhưng kém đẹp hơn.
 
-![Paired moving-block bootstrap](outputs/distribution_oos_laptop/figures/bootstrap_metric_differences.png)
+![Paired moving-block bootstrap](outputs/distribution_oos_vb/figures/bootstrap_metric_differences.png)
 
-**Nhận xét định lượng:** CI 95% của chênh lệch CRPS VB trừ point nằm hoàn toàn
-dưới 0 ở cả ba horizon. So với posterior mean, CI h20 chứa 0; CI h40/h60 nằm
-trên 0. Parameter-uncertainty propagation vì vậy không vượt Bayesian
-regularization một cách nhất quán.
+![Brier sự kiện đuôi](outputs/distribution_oos_vb/figures/tail_event_brier.png)
 
-![Runtime benchmark OOS](outputs/distribution_oos_laptop/figures/runtime_profile.png)
+**Quyết định theo quy tắc đăng ký trước** (`scripts/summarize_vb_results.py`,
+lưu tại `outputs/latest/vb_decisions.json`): VB chỉ được chọn nếu cải thiện
+CRPS/WIS **và** coverage không xấu hơn → h20: point, h40: point, h60:
+variational → **mặc định production là `point_estimate`**; toàn bộ output
+Bayesian được giữ như phân tích nghiên cứu. Kết luận thuộc **dạng B**:
+Variational Bayes cải thiện một số khía cạnh (proper scores, Brier drawdown
+ngắn hạn) nhưng chưa ổn định về calibration.
 
-**Nhận xét định lượng:** Profile laptop chạy xong trong 4.040,5 giây, khoảng
-67,3 phút, với peak Python-traced memory khoảng 152 MiB. Cả chín posterior fits
-hoàn tất nhưng đều có status `not_converged` sau 800 bước ADVI; đây là giới hạn
-quan trọng khi diễn giải kết quả.
+Chi tiết: [outputs/distribution_oos_vb/report.md](outputs/distribution_oos_vb/report.md).
 
-Báo cáo gồm chín biểu đồ, VaR/PIT, drawdown, độ ổn định theo fold, phân loại
-trạng thái và toàn bộ giới hạn được ghi tại
-[benchmark phân phối OOS](docs/distribution_oos_benchmark.md).
+### So sánh EBM và Bayesian regime head (ablation)
+
+Bayesian hierarchical multinomial head (20 feature chọn từ train, 3 ADVI
+seed, class-weighted) được so với EBM/XGBoost/RF/MACD trên cùng các fold
+purged:
+
+| Model (trung bình 3 fold) | Macro F1 | Brier | Log loss | Recall Bear | Recall Stress | Objective J |
+| :-- | ---: | ---: | ---: | ---: | ---: | ---: |
+| EBM calibrated | 0.219–0.236 | 0.738–0.743 | 1.36 | 0.067–0.084 | **0.263–0.353** | **0.293–0.308** |
+| Bayesian regime head | 0.210–0.220 | **0.722–0.741** | **1.32–1.35** | 0.000–0.005 | 0.000–0.230 | 0.240–0.258 |
+| XGBoost | 0.186–0.244 | 0.748–0.805 | 1.37–1.47 | 0.013–0.032 | 0.213–0.335 | 0.268–0.287 |
+| Random Forest | 0.197–0.246 | 0.748–0.778 | 1.38–1.43 | 0.021–0.204 | 0.053–0.207 | 0.244–0.289 |
+
+Bayesian head có Brier/log-loss/ECE tốt hơn nhưng gần như không bắt được
+Bear/Stress (recall ≈ 0); **theo quy tắc đăng ký trước, EBM giữ vai trò
+production classifier**. Khả năng nhận diện Bear (recall ~7%) vẫn là điểm
+yếu chưa giải quyết được của cả họ mô hình. Ablation nhóm feature (EBM,
+h=20): thêm HMM tăng nhẹ macro F1 và recall Stress; thêm EGARCH tăng nhẹ
+recall Bear — không có bằng chứng mạnh.
+
+![So sánh regime head](outputs/regime_head_benchmark/figures/regime_head_comparison.png)
+
+### Dự báo live RAEMF-VB-MC (chưa thể kiểm chứng)
+
+Từ phiên 2026-07-13 (close 1.800,54; posterior deployment hội tụ): trung vị
+20/40/60 phiên +1,0%/+2,3%/+3,3%; P(lợi suất âm) 32,6%/25,4%/19,4%; phân rã
+phương sai cho thấy parameter uncertainty chiếm ~0%/5%/14%. Các con số này
+chỉ có thể chấm điểm khi đủ 20/40/60 phiên tương lai. Bản đọc cho người
+không chuyên: [docs/nontechnical_outlook.md](docs/nontechnical_outlook.md).
+
+Kết quả run cũ (v0.2.0, posterior chưa hội tụ) được giữ tại
+[benchmark phân phối OOS](docs/distribution_oos_benchmark.md) và
+`outputs/distribution_oos_laptop/` để đối chiếu lịch sử.
 
 Chi tiết công thức và giới hạn nằm tại
 [phương pháp Variational Bayes](docs/variational_bayes_methodology.md), còn
